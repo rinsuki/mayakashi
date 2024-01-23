@@ -25,7 +25,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler
-          go get -u github.com/golang/protobuf/protoc-gen-go
+          go install google.golang.org/protobuf/cmd/protoc-gen-go
 
       - name: Build and package
         run: |
