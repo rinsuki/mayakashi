@@ -48,7 +48,7 @@ jobs:
           GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build -o marmounter_${{ matrix.os }}_${{ matrix.arch }} ./marmounter
       
       - name: Rename (Windows)
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows'
         run: |
           mv marmounter_${{ matrix.os }}_${{ matrix.arch }} marmounter_${{ matrix.os }}_${{ matrix.arch }}.exe
 
