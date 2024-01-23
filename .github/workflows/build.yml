@@ -23,6 +23,7 @@ jobs:
 
       - name: Build and package
         run: |
+          make # .proto -> .go
           GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build -o marmounter_${{ matrix.os }}_${{ matrix.arch }} ./marmounter
       
       - name: Rename (Windows)
