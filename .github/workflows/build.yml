@@ -27,9 +27,16 @@ jobs:
           sudo apt-get install -y protobuf-compiler
           go install google.golang.org/protobuf/cmd/protoc-gen-go
 
+      - name: Make protobuf files
+        run: |
+          make
+
+      - name: Download dependencies
+        run: |
+          go mod download
+
       - name: Build and package
         run: |
-          make # .proto -> .go
           GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build -o marmounter_${{ matrix.os }}_${{ matrix.arch }} ./marmounter
       
       - name: Rename (Windows)
