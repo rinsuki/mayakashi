@@ -1,0 +1,1 @@
+include!(concat!(env!("OUT_DIR"), "/mayakashi.rs"));

@@ -1,0 +1,43 @@
+syntax = "proto3";
+package mayakashi;
+
+import "google/protobuf/timestamp.proto";
+
+enum CompressedMethod {
+    PASSTHROUGH = 0;
+    ZSTANDARD = 1;
+}
+
+message FileInfo {
+    string path = 1;
+    repeated ChunkInfo chunks = 2;
+
+    uint32 chunks_crc32 = 5;
+    uint32 original_crc32 = 6;
+
+    bytes chunks_sha256 = 7;
+    bytes original_sha256 = 8;
+
+    google.protobuf.Timestamp modified_time = 9;
+    // uint32 dictionary_size = 11;
+
+    int32 priority = 12;
+}
+
+message FileEntry {
+    FileInfo info = 1;
+    uint32 file_index = 2;
+    uint64 body_offset = 5;
+    uint64 body_size = 6;
+}
+
+message FileIndexFile {
+    repeated FileEntry entries = 1;
+}
+
+message ChunkInfo {
+    uint32 compressed_length = 1;
+    uint32 original_length = 2;
+    CompressedMethod compressed_method = 3;
+    // bool using_dictionary = 4;
+}
