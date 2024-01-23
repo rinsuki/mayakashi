@@ -17,6 +17,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler
+          go get -u github.com/golang/protobuf/protoc-gen-go
 
       - name: Checkout code
         uses: actions/checkout@v4
