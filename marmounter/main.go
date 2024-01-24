@@ -239,9 +239,6 @@ func (fs *MayakashiFS) parseZipFile(file string, additionalPrefix string, includ
 	var fileCount int
 
 	for _, f := range zf.File {
-		if f.FileInfo().IsDir() {
-			continue
-		}
 		origPath := f.Name
 		if !strings.HasPrefix(origPath, "/") {
 			origPath = "/" + origPath
@@ -273,8 +270,13 @@ func (fs *MayakashiFS) parseZipFile(file string, additionalPrefix string, includ
 		}
 
 		dir := origPath[:strings.LastIndex(origPath, "/")]
-		fs.Directories[fs.getDirInfo(dir)].Files[strings.ToLower(origPath)] = origPath
-		fileCount += 1
+		if f.FileInfo().IsDir() {
+			// just create directory
+			fs.getDirInfo(dir)
+		} else {
+			fs.Directories[fs.getDirInfo(dir)].Files[strings.ToLower(origPath)] = origPath
+			fileCount += 1
+		}
 	}
 	fmt.Printf("Loaded %d files\n", fileCount)
 
