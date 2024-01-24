@@ -44,6 +44,11 @@ there is two part:
    * NOTE: Actual decompress will not proceed by preload
 * `pprof=<addr>`
   * Enable pprof on this address (e.g. `pprof=:6060`)
+* `onlyglob=<glob>:...`
+  * Only mount files which matches this glob pattern (e.g. `onlyglob=*.png:some.mar`)
+  * You can specify multiple glob patterns by separating with `:`
+  * NOTE: addprefix will not applied to this glob pattern
+  * NOTE: case insensitive
 * `/path/to/file.zip`
   * Mount zip file
   * NOTE: Reading big file from zip file will be slow, you should consider to use .mar file if zip contains large file

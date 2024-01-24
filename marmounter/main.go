@@ -162,6 +162,18 @@ func (fs *MayakashiFS) ParseFile(file string) error {
 		return nil
 	}
 
+	includedGlobs := []string{}
+
+	for strings.HasPrefix(file, "onlyglob=") {
+		oa := strings.SplitN(file, ":", 2)
+		file = oa[1]
+		includedGlobs = append(includedGlobs, oa[0][len("onlyglob="):])
+	}
+
+	if len(includedGlobs) == 0 {
+		includedGlobs = append(includedGlobs, "/**/*")
+	}
+
 	if strings.HasPrefix(file, "commandsfile=") {
 		// commands are splitted by line.
 
@@ -186,11 +198,11 @@ func (fs *MayakashiFS) ParseFile(file string) error {
 	}
 
 	if strings.HasSuffix(file, ".zip") {
-		return fs.parseZipFile(file, additionalPrefix)
+		return fs.parseZipFile(file, additionalPrefix, includedGlobs)
 	}
 
 	if strings.HasSuffix(file, ".mar") {
-		return fs.parseMARFile(file, additionalPrefix)
+		return fs.parseMARFile(file, additionalPrefix, includedGlobs)
 	}
 
 	return fmt.Errorf("unknown file type (filename suffix): %s", file)
@@ -220,9 +232,11 @@ func (fs *MayakashiFS) putZipReadCloser(file string, zf *zip.ReadCloser) {
 	pool.Put(zf)
 }
 
-func (fs *MayakashiFS) parseZipFile(file string, additionalPrefix string) error {
+func (fs *MayakashiFS) parseZipFile(file string, additionalPrefix string, includedGlobs []string) error {
 	zf := fs.getZipReadCloser(file)
 	defer fs.putZipReadCloser(file, zf)
+
+	var fileCount int
 
 	for _, f := range zf.File {
 		if f.FileInfo().IsDir() {
@@ -232,6 +246,23 @@ func (fs *MayakashiFS) parseZipFile(file string, additionalPrefix string) error 
 		if !strings.HasPrefix(origPath, "/") {
 			origPath = "/" + origPath
 		}
+
+		matched := false
+		for _, glob := range includedGlobs {
+			var err error
+			matched, err = doublestar.Match(strings.ToLower(glob), strings.ToLower(origPath))
+			if err != nil {
+				return err
+			}
+			if matched {
+				break
+			}
+		}
+
+		if !matched {
+			continue
+		}
+
 		origPath = additionalPrefix + origPath
 
 		lowerPath := strings.ToLower(origPath)
@@ -243,12 +274,14 @@ func (fs *MayakashiFS) parseZipFile(file string, additionalPrefix string) error 
 
 		dir := origPath[:strings.LastIndex(origPath, "/")]
 		fs.Directories[fs.getDirInfo(dir)].Files[strings.ToLower(origPath)] = origPath
+		fileCount += 1
 	}
+	fmt.Printf("Loaded %d files\n", fileCount)
 
 	return nil
 }
 
-func (fs *MayakashiFS) parseMARFile(file string, additionalPrefix string) error {
+func (fs *MayakashiFS) parseMARFile(file string, additionalPrefix string, includedGlobs []string) error {
 
 	f, err := os.Open(file + ".idx")
 	if err != nil {
@@ -298,11 +331,29 @@ func (fs *MayakashiFS) parseMARFile(file string, additionalPrefix string) error 
 		return err
 	}
 
+	fileCount := 0
+
 	for _, entry := range indexFile.Entries {
 		origPath := entry.Info.Path
 		if !strings.HasPrefix(origPath, "/") {
 			origPath = "/" + origPath
 		}
+
+		matched := false
+		for _, glob := range includedGlobs {
+			matched, err = doublestar.Match(strings.ToLower(glob), strings.ToLower(origPath))
+			if err != nil {
+				return err
+			}
+			if matched {
+				break
+			}
+		}
+
+		if !matched {
+			continue
+		}
+
 		origPath = additionalPrefix + origPath
 
 		lowerPath := strings.ToLower(origPath)
@@ -313,7 +364,9 @@ func (fs *MayakashiFS) parseMARFile(file string, additionalPrefix string) error 
 
 		dir := origPath[:strings.LastIndex(origPath, "/")]
 		fs.Directories[fs.getDirInfo(dir)].Files[strings.ToLower(origPath)] = origPath
+		fileCount += 1
 	}
+	fmt.Printf("Loaded %d files\n", fileCount)
 
 	return nil
 }
@@ -813,6 +866,7 @@ func (fs *MayakashiFS) Create(path string, flags int, mode uint32) (int, uint64)
 	overlayPath := fs.getOverlayPath(path)
 	if overlayPath == nil {
 		fmt.Println("tried to write read-only path", path)
+		return -fuse.EROFS, 0
 	}
 	err := os.MkdirAll((*overlayPath)[:strings.LastIndex(*overlayPath, "/")], 0777)
 	if err != nil {
