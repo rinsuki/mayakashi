@@ -29,6 +29,17 @@ there is two part:
 
 ### marmounter options
 
+* `onlyglob=<glob>:...`
+  * Only mount files which matches this glob pattern (e.g. `onlyglob=*.png:some.mar`)
+  * You can specify multiple glob patterns by separating with `:`
+  * NOTE: addprefix and stripprefix will not applied to this glob pattern
+  * NOTE: case insensitive
+* `stripprefix=<prefix>:...`
+  * Strip prefix from path if it starts with this prefix
+  * If file will not start with this prefix, it will be not touched (still remains)
+    * If you want to remove those files, you should use `onlyglob` option
+  * NOTE: addprefix will not applied to this
+  * NOTE: case insensitive
 * `addprefix=<prefix>:...`
   * Add prefix to all files in archive
   * e.g. `addprefix=foo/bar:some.mar` will add `foo/bar` prefix to all files in `some.mar`
@@ -44,11 +55,6 @@ there is two part:
    * NOTE: Actual decompress will not proceed by preload
 * `pprof=<addr>`
   * Enable pprof on this address (e.g. `pprof=:6060`)
-* `onlyglob=<glob>:...`
-  * Only mount files which matches this glob pattern (e.g. `onlyglob=*.png:some.mar`)
-  * You can specify multiple glob patterns by separating with `:`
-  * NOTE: addprefix will not applied to this glob pattern
-  * NOTE: case insensitive
 * `/path/to/file.zip`
   * Mount zip file
   * NOTE: Reading big file from zip file will be slow, you should consider to use .mar file if zip contains large file

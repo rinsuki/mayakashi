@@ -116,93 +116,116 @@ func NewMayakashiFS() *MayakashiFS {
 }
 
 func (fs *MayakashiFS) ParseFile(file string) error {
-	additionalPrefix := ""
+	var options ArchiveReadOptions
 
-	if strings.HasPrefix(file, "addprefix=") {
-		af := strings.SplitN(file, ":", 2)
-		additionalPrefix = af[0]
-		file = af[1]
-		additionalPrefix = strings.SplitN(additionalPrefix, "=", 2)[1]
-		if len(additionalPrefix) > 0 && !strings.HasPrefix(additionalPrefix, "/") {
-			additionalPrefix = "/" + additionalPrefix
+	for {
+		shouldBreak := true
+
+		if strings.HasPrefix(file, "addprefix=") {
+			af := strings.SplitN(file, ":", 2)
+			ap := af[0]
+			file = af[1]
+			ap = strings.SplitN(ap, "=", 2)[1]
+			if len(ap) > 0 && !strings.HasPrefix(ap, "/") {
+				ap = "/" + ap
+			}
+			for strings.HasSuffix(ap, "/") {
+				ap = ap[:len(ap)-1]
+			}
+			if options.AdditionalPrefix != "" {
+				return fmt.Errorf("additional prefix already set (%s)", options.AdditionalPrefix)
+			}
+			options.AdditionalPrefix = ap
+			shouldBreak = false
 		}
-		for strings.HasSuffix(additionalPrefix, "/") {
-			additionalPrefix = additionalPrefix[:len(additionalPrefix)-1]
+
+		if strings.HasPrefix(file, "stripprefix=") {
+			sf := strings.SplitN(file, ":", 2)
+			file = sf[1]
+			sf = strings.SplitN(sf[0], "=", 2)
+			sp := sf[1]
+			if len(sp) > 0 && !strings.HasPrefix(sp, "/") {
+				sp = "/" + sp
+			}
+			if options.StripPrefix != "" {
+				return fmt.Errorf("strip prefix already set (%s)", options.StripPrefix)
+			}
+			options.StripPrefix = sp
+			shouldBreak = false
 		}
-	}
 
-	if strings.HasPrefix(file, "roprefix=") {
-		rop := strings.SplitN(file, "=", 2)
-		file = rop[1]
-		if !strings.HasPrefix(file, "/") {
-			file = "/" + file
+		if strings.HasPrefix(file, "roprefix=") {
+			rop := strings.SplitN(file, "=", 2)
+			file = rop[1]
+			if !strings.HasPrefix(file, "/") {
+				file = "/" + file
+			}
+			fs.ReadonlyPrefixes = append(fs.ReadonlyPrefixes, file)
+			return nil
 		}
-		fs.ReadonlyPrefixes = append(fs.ReadonlyPrefixes, file)
-		return nil
-	}
 
-	if strings.HasPrefix(file, "overlaydir=") {
-		od := strings.SplitN(file, "=", 2)
-		file = od[1]
-		fs.OverlayDir = file
-		return nil
-	}
-
-	if strings.HasPrefix(file, "preload=") {
-		od := strings.SplitN(file, "=", 2)
-		file = od[1]
-		fs.PreloadGlobs = append(fs.PreloadGlobs, file)
-		return nil
-	}
-
-	if strings.HasPrefix(file, "pprof=") {
-		od := strings.SplitN(file, "=", 2)
-		file = od[1]
-		fs.PProfAddr = file
-		return nil
-	}
-
-	includedGlobs := []string{}
-
-	for strings.HasPrefix(file, "onlyglob=") {
-		oa := strings.SplitN(file, ":", 2)
-		file = oa[1]
-		includedGlobs = append(includedGlobs, oa[0][len("onlyglob="):])
-	}
-
-	if len(includedGlobs) == 0 {
-		includedGlobs = append(includedGlobs, "/**/*")
-	}
-
-	if strings.HasPrefix(file, "commandsfile=") {
-		// commands are splitted by line.
-
-		cf := strings.SplitN(file, "=", 2)
-		file = cf[1]
-
-		f, err := os.Open(file)
-		if err != nil {
-			return err
+		if strings.HasPrefix(file, "overlaydir=") {
+			od := strings.SplitN(file, "=", 2)
+			file = od[1]
+			fs.OverlayDir = file
+			return nil
 		}
-		defer f.Close()
 
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := scanner.Text()
-			fmt.Println("Loading from file", file, "Command: "+line)
-			if err := fs.ParseFile(line); err != nil {
+		if strings.HasPrefix(file, "preload=") {
+			od := strings.SplitN(file, "=", 2)
+			file = od[1]
+			fs.PreloadGlobs = append(fs.PreloadGlobs, file)
+			return nil
+		}
+
+		if strings.HasPrefix(file, "pprof=") {
+			od := strings.SplitN(file, "=", 2)
+			file = od[1]
+			fs.PProfAddr = file
+			return nil
+		}
+
+		for strings.HasPrefix(file, "onlyglob=") {
+			oa := strings.SplitN(file, ":", 2)
+			file = oa[1]
+			options.IncludedGlobs = append(options.IncludedGlobs, oa[0][len("onlyglob="):])
+			shouldBreak = false
+		}
+
+		if strings.HasPrefix(file, "commandsfile=") {
+			// commands are splitted by line.
+
+			cf := strings.SplitN(file, "=", 2)
+			file = cf[1]
+
+			f, err := os.Open(file)
+			if err != nil {
 				return err
 			}
+			defer f.Close()
+
+			scanner := bufio.NewScanner(f)
+			for scanner.Scan() {
+				line := scanner.Text()
+				fmt.Println("Loading from file", file, "Command: "+line)
+				if err := fs.ParseFile(line); err != nil {
+					return err
+				}
+			}
+			return nil
 		}
-		return nil
+
+		if shouldBreak {
+			break
+		}
 	}
 
 	if strings.HasSuffix(file, ".zip") {
-		return fs.parseZipFile(file, additionalPrefix, includedGlobs)
+		return fs.parseZipFile(file, options)
 	}
 
 	if strings.HasSuffix(file, ".mar") {
-		return fs.parseMARFile(file, additionalPrefix, includedGlobs)
+		return fs.parseMARFile(file, options)
 	}
 
 	return fmt.Errorf("unknown file type (filename suffix): %s", file)
@@ -232,35 +255,17 @@ func (fs *MayakashiFS) putZipReadCloser(file string, zf *zip.ReadCloser) {
 	pool.Put(zf)
 }
 
-func (fs *MayakashiFS) parseZipFile(file string, additionalPrefix string, includedGlobs []string) error {
+func (fs *MayakashiFS) parseZipFile(file string, o ArchiveReadOptions) error {
 	zf := fs.getZipReadCloser(file)
 	defer fs.putZipReadCloser(file, zf)
 
 	var fileCount int
 
 	for _, f := range zf.File {
-		origPath := f.Name
-		if !strings.HasPrefix(origPath, "/") {
-			origPath = "/" + origPath
-		}
-
-		matched := false
-		for _, glob := range includedGlobs {
-			var err error
-			matched, err = doublestar.Match(strings.ToLower(glob), strings.ToLower(origPath))
-			if err != nil {
-				return err
-			}
-			if matched {
-				break
-			}
-		}
-
-		if !matched {
+		origPath := o.GetFilePath(f.Name)
+		if origPath == "" {
 			continue
 		}
-
-		origPath = additionalPrefix + origPath
 
 		lowerPath := strings.ToLower(origPath)
 		fs.Files[lowerPath] = FileInfo{
@@ -283,7 +288,7 @@ func (fs *MayakashiFS) parseZipFile(file string, additionalPrefix string, includ
 	return nil
 }
 
-func (fs *MayakashiFS) parseMARFile(file string, additionalPrefix string, includedGlobs []string) error {
+func (fs *MayakashiFS) parseMARFile(file string, o ArchiveReadOptions) error {
 
 	f, err := os.Open(file + ".idx")
 	if err != nil {
@@ -336,27 +341,10 @@ func (fs *MayakashiFS) parseMARFile(file string, additionalPrefix string, includ
 	fileCount := 0
 
 	for _, entry := range indexFile.Entries {
-		origPath := entry.Info.Path
-		if !strings.HasPrefix(origPath, "/") {
-			origPath = "/" + origPath
-		}
-
-		matched := false
-		for _, glob := range includedGlobs {
-			matched, err = doublestar.Match(strings.ToLower(glob), strings.ToLower(origPath))
-			if err != nil {
-				return err
-			}
-			if matched {
-				break
-			}
-		}
-
-		if !matched {
+		origPath := o.GetFilePath(entry.Info.Path)
+		if origPath == "" {
 			continue
 		}
-
-		origPath = additionalPrefix + origPath
 
 		lowerPath := strings.ToLower(origPath)
 		fs.Files[lowerPath] = FileInfo{
