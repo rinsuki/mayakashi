@@ -47,6 +47,8 @@ there is two part:
   * If path starts with this prefix, we wouldn't check overlay directory
 * `overlaydir=<dir>` 
   * Overlay directory path (default: `./overlay`)
+* `ziplocale=cp932`
+  * Specify character set of zip file name (default: UTF-8)
 * `commandsfile=<file>`
   * Read options from this file (one option per line)
 * `preload=<glob>`

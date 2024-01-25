@@ -197,6 +197,17 @@ func (fs *MayakashiFS) ParseFile(file string) error {
 			shouldBreak = false
 		}
 
+		if strings.HasPrefix(file, "ziplocale=") {
+			zf := strings.SplitN(file, ":", 2)
+			file = zf[1]
+			zf = strings.SplitN(zf[0], "=", 2)
+			locale := zf[1]
+			if err := options.SetZipLocale(locale); err != nil {
+				return err
+			}
+			shouldBreak = false
+		}
+
 		if strings.HasPrefix(file, "commandsfile=") {
 			// commands are splitted by line.
 
@@ -267,6 +278,9 @@ func (fs *MayakashiFS) parseZipFile(file string, o ArchiveReadOptions) error {
 	var fileCount int
 
 	for _, f := range zf.File {
+		if f.NonUTF8 {
+			f.Name = o.ConvertZipFileName(f.Name)
+		}
 		origPath := o.GetFilePath(f.Name)
 		if origPath == "" {
 			continue

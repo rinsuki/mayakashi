@@ -1,15 +1,49 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/bmatcuk/doublestar"
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/japanese"
 )
 
 type ArchiveReadOptions struct {
 	StripPrefix      string
 	AdditionalPrefix string
 	IncludedGlobs    []string
+	zipLocale        string
+}
+
+func (o *ArchiveReadOptions) SetZipLocale(locale string) error {
+	if locale != "cp932" {
+		return fmt.Errorf("invalid locale: %s", locale)
+	}
+
+	o.zipLocale = locale
+
+	return nil
+}
+
+func (o *ArchiveReadOptions) ConvertZipFileName(path string) string {
+	if o.zipLocale == "" {
+		return path
+	}
+
+	var decoder *encoding.Decoder
+
+	if o.zipLocale == "cp932" {
+		decoder = japanese.ShiftJIS.NewDecoder()
+	}
+
+	decoded, err := decoder.String(path)
+
+	if err != nil {
+		panic(err)
+	}
+
+	return decoded
 }
 
 func (o *ArchiveReadOptions) GetFilePath(path string) string {
