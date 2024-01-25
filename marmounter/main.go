@@ -492,7 +492,7 @@ func (fs *MayakashiFS) Getattr(path string, stat *fuse.Stat_t, fh uint64) int {
 	}
 
 	if !strings.Contains(path, "/._") && overlayPath != nil {
-		fmt.Println("getattr but failed", path)
+		// fmt.Println("getattr but failed", path)
 	}
 	return -fuse.ENOENT
 }
