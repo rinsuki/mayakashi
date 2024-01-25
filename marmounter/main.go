@@ -118,6 +118,11 @@ func NewMayakashiFS() *MayakashiFS {
 func (fs *MayakashiFS) ParseFile(file string) error {
 	var options ArchiveReadOptions
 
+	if file == "" || strings.HasPrefix(file, "# ") {
+		// ignore empty or starts with "# "
+		return nil
+	}
+
 	for {
 		shouldBreak := true
 
@@ -226,11 +231,6 @@ func (fs *MayakashiFS) ParseFile(file string) error {
 
 	if strings.HasSuffix(file, ".mar") {
 		return fs.parseMARFile(file, options)
-	}
-
-	if file == "" || strings.HasPrefix(file, "# ") {
-		// ignore empty or starts with "# "
-		return nil
 	}
 
 	return fmt.Errorf("unknown file type (filename suffix): %s", file)
