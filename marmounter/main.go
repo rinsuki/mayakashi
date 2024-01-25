@@ -1087,6 +1087,7 @@ func main() {
 	}()
 
 	host := fuse.NewFileSystemHost(fs)
+	host.SetCapCaseInsensitive(true)
 	if fs.PProfAddr != "" {
 		go func() {
 			http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
