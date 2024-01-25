@@ -228,6 +228,11 @@ func (fs *MayakashiFS) ParseFile(file string) error {
 		return fs.parseMARFile(file, options)
 	}
 
+	if file == "" || strings.HasPrefix(file, "# ") {
+		// ignore empty or starts with "# "
+		return nil
+	}
+
 	return fmt.Errorf("unknown file type (filename suffix): %s", file)
 }
 
