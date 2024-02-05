@@ -58,7 +58,7 @@ func (o *ArchiveReadOptions) GetFilePath(path string) string {
 	} else {
 		for _, glob := range o.IncludedGlobs {
 			var err error
-			matched, err = doublestar.Match(strings.ToLower(glob), strings.ToLower(path))
+			matched, err = doublestar.Match(NormalizeString(glob), NormalizeString(path))
 			if err != nil {
 				matched = false
 				continue
@@ -70,7 +70,7 @@ func (o *ArchiveReadOptions) GetFilePath(path string) string {
 	}
 
 	if o.StripPrefix != "" {
-		if strings.HasPrefix(strings.ToLower(path), strings.ToLower(o.StripPrefix)) {
+		if strings.HasPrefix(NormalizeString(path), NormalizeString(o.StripPrefix)) {
 			path = path[len(o.StripPrefix):]
 			if !strings.HasPrefix(path, "/") {
 				path = "/" + path

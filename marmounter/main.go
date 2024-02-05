@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/bmatcuk/doublestar"
 	"github.com/bradenaw/juniper/xsync"
 	"github.com/dgraph-io/ristretto"
@@ -86,6 +88,13 @@ func recoverHandler() {
 		time.Sleep(1 * time.Second)
 		panic(r)
 	}
+}
+
+func NormalizeString(s string) string {
+	s = strings.ToLower(s)
+	s = norm.NFC.String(s)
+
+	return s
 }
 
 func NewMayakashiFS() *MayakashiFS {
@@ -286,7 +295,7 @@ func (fs *MayakashiFS) parseZipFile(file string, o ArchiveReadOptions) error {
 			continue
 		}
 
-		lowerPath := strings.ToLower(origPath)
+		lowerPath := NormalizeString(origPath)
 		fs.Files[lowerPath] = FileInfo{
 			MarEntry:    nil,
 			ZipEntry:    f,
@@ -298,7 +307,7 @@ func (fs *MayakashiFS) parseZipFile(file string, o ArchiveReadOptions) error {
 			// just create directory
 			fs.getDirInfo(dir)
 		} else {
-			fs.Directories[fs.getDirInfo(dir)].Files[strings.ToLower(origPath)] = origPath
+			fs.Directories[fs.getDirInfo(dir)].Files[NormalizeString(origPath)] = origPath
 			fileCount += 1
 		}
 	}
@@ -365,14 +374,14 @@ func (fs *MayakashiFS) parseMARFile(file string, o ArchiveReadOptions) error {
 			continue
 		}
 
-		lowerPath := strings.ToLower(origPath)
+		lowerPath := NormalizeString(origPath)
 		fs.Files[lowerPath] = FileInfo{
 			MarEntry:    entry,
 			ArchiveFile: file,
 		}
 
 		dir := origPath[:strings.LastIndex(origPath, "/")]
-		fs.Directories[fs.getDirInfo(dir)].Files[strings.ToLower(origPath)] = origPath
+		fs.Directories[fs.getDirInfo(dir)].Files[NormalizeString(origPath)] = origPath
 		fileCount += 1
 	}
 	fmt.Printf("Loaded %d files\n", fileCount)
@@ -384,7 +393,7 @@ func (fs *MayakashiFS) getDirInfo(dirPath string) string {
 	if dirPath == "" {
 		dirPath = "/"
 	}
-	lowerDirPath := strings.ToLower(dirPath)
+	lowerDirPath := NormalizeString(dirPath)
 	dirInfo, ok := fs.Directories[lowerDirPath]
 	if !ok {
 		dirInfo = &DirInfo{
@@ -397,7 +406,7 @@ func (fs *MayakashiFS) getDirInfo(dirPath string) string {
 			upDir = "/"
 		}
 		if upDir != dirPath {
-			fs.Directories[fs.getDirInfo(upDir)].Directories[strings.ToLower(dirPath)] = dirPath
+			fs.Directories[fs.getDirInfo(upDir)].Directories[NormalizeString(dirPath)] = dirPath
 		}
 	}
 	return lowerDirPath
@@ -408,7 +417,7 @@ func (fs *MayakashiFS) getOverlayPath(path string) *string {
 		return nil
 	}
 	for _, prefix := range fs.ReadonlyPrefixes {
-		if strings.HasPrefix(strings.ToLower(path), strings.ToLower(prefix)) {
+		if strings.HasPrefix(NormalizeString(path), NormalizeString(prefix)) {
 			return nil
 		}
 	}
@@ -493,12 +502,12 @@ func (fs *MayakashiFS) Getattr(path string, stat *fuse.Stat_t, fh uint64) int {
 
 	// fmt.Println("getattr", path)
 
-	if file, ok := fs.Files[strings.ToLower(path)]; ok {
+	if file, ok := fs.Files[NormalizeString(path)]; ok {
 		GetFuseStatFromFileInfo(&file, stat)
 		return 0
 	}
 
-	dir := fs.Directories[strings.ToLower(path)]
+	dir := fs.Directories[NormalizeString(path)]
 
 	if dir != nil {
 		stat.Mode = fuse.S_IFDIR | 0777
@@ -530,7 +539,7 @@ func (fs *MayakashiFS) Readdir(path string,
 			haveSomeFilesInOverlay = true
 			for _, file := range files {
 				// println("readdir", path, file.Name())
-				filenames[strings.ToLower(file.Name())] = struct{}{}
+				filenames[NormalizeString(file.Name())] = struct{}{}
 				var stat fuse.Stat_t
 				if file.IsDir() {
 					stat.Mode = fuse.S_IFDIR | 0777
@@ -547,7 +556,7 @@ func (fs *MayakashiFS) Readdir(path string,
 		}
 	}
 
-	dirInfo, ok := fs.Directories[strings.ToLower(path)]
+	dirInfo, ok := fs.Directories[NormalizeString(path)]
 
 	if !ok {
 		if !haveSomeFilesInOverlay {
@@ -561,18 +570,18 @@ func (fs *MayakashiFS) Readdir(path string,
 		var stat fuse.Stat_t
 		stat.Mode = fuse.S_IFDIR | 0777
 		dirname := dir[strings.LastIndex(dir, "/")+1:]
-		if _, ok := filenames[strings.ToLower(dirname)]; !ok {
+		if _, ok := filenames[NormalizeString(dirname)]; !ok {
 			fill(dirname, &stat, 0)
 			// println("fill", "dir", dirname)
 		}
 	}
 	for _, file := range dirInfo.Files {
-		file := fs.Files[strings.ToLower(file)]
+		file := fs.Files[NormalizeString(file)]
 		// println(file.Entry.Info.Path)
 		var stat fuse.Stat_t
 		GetFuseStatFromFileInfo(&file, &stat)
 		filename := file.GetFilename()
-		if _, ok := filenames[strings.ToLower(filename)]; !ok {
+		if _, ok := filenames[NormalizeString(filename)]; !ok {
 			fill(filename, &stat, 0)
 			// println("fill", "file", filename)
 		}
@@ -618,7 +627,7 @@ func (fs *MayakashiFS) Open(path string, flags int) (int, uint64) {
 		}
 	}
 
-	if _, ok := fs.Files[strings.ToLower(path)]; ok {
+	if _, ok := fs.Files[NormalizeString(path)]; ok {
 		fs.Count += 1
 		if flags != fuse.O_RDONLY {
 			println("not O_RDONLY", path, flags)
@@ -668,7 +677,7 @@ func (fs *MayakashiFS) readInternally(path string, buff []byte, offset int64, fh
 	}
 	// println("read", path, offset, len(buff), fh)
 
-	file, ok := fs.Files[strings.ToLower(path)]
+	file, ok := fs.Files[NormalizeString(path)]
 	if !ok {
 		println("read not found", path)
 		return -fuse.ENOENT
@@ -923,20 +932,20 @@ func (fs *MayakashiFS) Release(path string, fh uint64) int {
 		defer file.Mutex.Unlock()
 		file.File.Close()
 		fs.OverlayFileHandlers.Delete(fh)
-		if overlayPath, ok := fs.RemoveRequestedPaths.Load(strings.ToLower(path)); ok {
+		if overlayPath, ok := fs.RemoveRequestedPaths.Load(NormalizeString(path)); ok {
 			err := os.Remove(overlayPath)
 			if err == nil {
 				fmt.Println("successfly remove scheduled files: ", path)
-				fs.RemoveRequestedPaths.Delete(strings.ToLower(path))
+				fs.RemoveRequestedPaths.Delete(NormalizeString(path))
 			} else {
 				fmt.Println("try to remove scheduled files: failed to remove", path, err)
 			}
 		}
-		if overlayPath, ok := fs.RenameRequestedPaths.Load(strings.ToLower(path)); ok {
+		if overlayPath, ok := fs.RenameRequestedPaths.Load(NormalizeString(path)); ok {
 			err := os.Rename(overlayPath.OldPath, overlayPath.NewPath)
 			if err == nil {
 				fmt.Println("successfly rename scheduled files: ", path)
-				fs.RenameRequestedPaths.Delete(strings.ToLower(path))
+				fs.RenameRequestedPaths.Delete(NormalizeString(path))
 			} else {
 				fmt.Println("try to rename scheduled files: failed to rename", path, err)
 			}
@@ -960,7 +969,7 @@ func (fs *MayakashiFS) Unlink(path string) int {
 		}
 		if err != nil {
 			fmt.Println("failed to remove, scheduled", err)
-			fs.RemoveRequestedPaths.Store(strings.ToLower(path), *overlayPath)
+			fs.RemoveRequestedPaths.Store(NormalizeString(path), *overlayPath)
 		}
 		return 0
 	}
@@ -988,7 +997,7 @@ func (fs *MayakashiFS) Rename(oldpath_in_fuse string, newpath_in_fuse string) in
 			return -fuse.EPERM
 		}
 		fmt.Println("failed to rename, queued", err)
-		fs.RenameRequestedPaths.Store(strings.ToLower(oldpath_in_fuse), RenameRequest{
+		fs.RenameRequestedPaths.Store(NormalizeString(oldpath_in_fuse), RenameRequest{
 			OldPath: *oldPath,
 			NewPath: *newPath,
 		})
@@ -1045,7 +1054,7 @@ func main() {
 		preloadFilesPerMarFile := map[string][]RuleAndFile{}
 		for _, rule := range fs.PreloadGlobs {
 			for filename, file := range fs.Files {
-				matched, err := doublestar.Match(strings.ToLower(rule), filename)
+				matched, err := doublestar.Match(NormalizeString(rule), filename)
 				if err != nil {
 					panic(err)
 				}
@@ -1078,7 +1087,7 @@ func main() {
 					rule := f.Rule
 					filename := f.FileName
 					fmt.Println("matched", rule, marFileName, filename)
-					file := fs.Files[strings.ToLower(filename)]
+					file := fs.Files[NormalizeString(filename)]
 					pool := GetFilePoolFromPath(marFileName)
 					ptr := file.MarEntry.BodyOffset
 					for _, chunk := range file.MarEntry.Info.Chunks {
