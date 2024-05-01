@@ -295,15 +295,32 @@ func (fs *MayakashiFS) parseZipFile(file string, o ArchiveReadOptions) error {
 			continue
 		}
 
+		shouldTreatAsDir := f.FileInfo().IsDir()
+
+		if strings.HasSuffix(origPath, "/") {
+			if !shouldTreatAsDir {
+				if f.FileInfo().Size() != 0 {
+					fmt.Println("invalid file size for invalid directory", origPath)
+					continue
+				}
+				origPath = origPath[:len(origPath)-1]
+				shouldTreatAsDir = true
+			}
+		}
+
 		lowerPath := NormalizeString(origPath)
-		fs.Files[lowerPath] = FileInfo{
-			MarEntry:    nil,
-			ZipEntry:    f,
-			ArchiveFile: file,
+
+		if !shouldTreatAsDir {
+			fs.Files[lowerPath] = FileInfo{
+				MarEntry:    nil,
+				ZipEntry:    f,
+				ArchiveFile: file,
+			}
 		}
 
 		dir := origPath[:strings.LastIndex(origPath, "/")]
-		if f.FileInfo().IsDir() {
+		// fmt.Println("dir", dir, origPath, f.FileInfo().IsDir())
+		if shouldTreatAsDir {
 			// just create directory
 			fs.getDirInfo(dir)
 		} else {
@@ -459,7 +476,7 @@ func (fi *FileInfo) GetFilename() string {
 	if fi.MarEntry != nil {
 		path = fi.MarEntry.Info.Path
 	} else {
-		path = fi.ZipEntry.Name
+		path = FixPathSplitter(fi.ZipEntry.Name)
 	}
 	return path[strings.LastIndex(path, "/")+1:]
 }

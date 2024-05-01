@@ -46,8 +46,13 @@ func (o *ArchiveReadOptions) ConvertZipFileName(path string) string {
 	return decoded
 }
 
+func FixPathSplitter(path string) string {
+	return strings.ReplaceAll(path, "\\", "/")
+}
+
 func (o *ArchiveReadOptions) GetFilePath(path string) string {
 	matched := false
+	path = FixPathSplitter(path)
 
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
