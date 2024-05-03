@@ -24,8 +24,9 @@ with tempfile.TemporaryDirectory() as tmpdir:
     mounter = subprocess.Popen([
         "./marmounter.exe",
         os.path.join(tmpdir, "hello.mar"),
-        "mountpoint=" + mountdir,
-        "overlaydir=" + overlaydir
+        "overlaydir=" + overlaydir,
+        "--",
+        mountdir,
     ])
     try:
         # first, we need to wait until mounter is ready
