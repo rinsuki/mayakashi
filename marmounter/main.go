@@ -636,12 +636,14 @@ func (fs *MayakashiFS) Open(path string, flags int) (int, uint64) {
 	}
 
 	overlayPath := fs.getOverlayPath(path)
+	mayWantsWrite := false
+	if (flags&fuse.O_WRONLY != 0) || (flags&fuse.O_RDWR != 0) {
+		mayWantsWrite = true
+	}
 	if overlayPath != nil {
 		nativeFlag := os.O_RDONLY
-		mayWantsWrite := false
-		if flags&fuse.O_WRONLY == fuse.O_WRONLY || flags&fuse.O_RDWR == fuse.O_RDWR {
+		if mayWantsWrite {
 			nativeFlag |= os.O_RDWR
-			mayWantsWrite = true
 		}
 		if flags&fuse.O_APPEND == fuse.O_APPEND {
 			nativeFlag |= os.O_APPEND
@@ -672,10 +674,11 @@ func (fs *MayakashiFS) Open(path string, flags int) (int, uint64) {
 				return -fuse.ENOENT, 0
 			}
 		}
-		if flags != fuse.O_RDONLY {
-			println("not O_RDONLY", path, flags)
+		if mayWantsWrite {
+			println("not read-only, copy...", path, flags)
 			// We need to copy the file to overlay
 			if overlayPath != nil {
+				os.MkdirAll((*overlayPath)[:strings.LastIndex(*overlayPath, "/")], 0777)
 				fp, err := os.Create(*overlayPath + WRITEBACK_SUFFIX)
 				if err != nil {
 					println("failed to create writeback overlay", err)
