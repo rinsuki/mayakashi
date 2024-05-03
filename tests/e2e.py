@@ -10,7 +10,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     mountdir = os.path.join(tmpdir, 'mount')
     os.mkdir(mountdir)
     overlaydir = os.path.join(tmpdir, 'overlay')
-    os.mkdir(mountdir)
+    os.mkdir(overlaydir)
     subprocess.run(["./mayakashi.exe", "create", "-i", srcdir, "-o", os.path.join(tmpdir, 'hello'), "-j", "2"]).check_returncode()
     mounter = subprocess.Popen(["./marmounter.exe", "./hello.mar", "mountpoint=" + mountdir, "overlaydir=" + overlaydir])
     try:
