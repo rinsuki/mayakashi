@@ -62,7 +62,7 @@ jobs:
       - name: Build marmounter
         run: go build -o marmounter.exe ./marmounter
         env:
-          CGO_ENABLED: "0"
+          CGO_ENABLED: ${{ runner.os == 'Windows' && '0' || '1' }}
       - name: Run E2E test
         run: python3 tests/e2e.py
         env:
