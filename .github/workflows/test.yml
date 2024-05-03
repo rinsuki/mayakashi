@@ -71,3 +71,4 @@ jobs:
         run: python3 tests/e2e.py
         env:
           PYTHONUNBUFFERED: "1"
+          PYTHONUTF8: "1"
