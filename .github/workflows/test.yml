@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  e2e_windows:
+  e2e:
     strategy:
       matrix:
         os: [windows, ubuntu]
@@ -53,7 +53,12 @@ jobs:
       - name: Build mayakashi
         run: |
           cargo build
-          cp target/debug/mayakashi.exe mayakashi.exe
+      - name: Copy mayakashi (Windows)
+        if: runner.os == 'Windows'
+        run: cp target/debug/mayakashi.exe mayakashi.exe
+      - name: Copy mayakashi (Linux)
+        if: runner.os != 'Windows'
+        run: cp target/debug/mayakashi mayakashi.exe
       - name: Build marmounter
         run: go build -o marmounter.exe ./marmounter
         env:
