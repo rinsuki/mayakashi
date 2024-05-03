@@ -44,6 +44,9 @@ jobs:
           Invoke-WebRequest -Uri $asseturi -Out winfsp-tests.zip
           Expand-Archive -Path winfsp-tests.zip
           Copy-Item "C:\Program Files (x86)\WinFsp\bin\winfsp-x64.dll" winfsp-tests
+      - name: Install FUSE (Linux)
+        if: runner.os != 'Windows'
+        run: sudo apt-get install -y libfuse-dev
       - name: Prepare protobuf
         run: |
           go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.32.0
