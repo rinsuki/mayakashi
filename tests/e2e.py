@@ -12,6 +12,9 @@ with tempfile.TemporaryDirectory() as tmpdir:
 
     with open(os.path.join(srcdir, 'test.for.delete.txt'), 'w') as f:
         f.write('Hello')
+    
+    with open(os.path.join(srcdir, 'test.for.overwrite.txt'), 'w') as f:
+        f.write('Hello')
 
     mountdir = os.path.join(tmpdir, 'mount')
     # os.mkdir(mountdir)
@@ -49,7 +52,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
             assert f.read() == 'Hello'
         assert os.path.exists(os.path.join(overlaydir, 'test.txt')) == False
 
-        print("Test 2 - Create to mounted directory")
+        print("Test 2 - Create new file")
         with open(os.path.join(mountdir, 'test2.txt'), 'w') as f:
             f.write('Hi')
         print("Test 2.1 - Exists on overlay directory")
@@ -61,15 +64,22 @@ with tempfile.TemporaryDirectory() as tmpdir:
         with open(os.path.join(mountdir, 'test2.txt'), 'r') as f:
             assert f.read() == 'Hi'
 
-        print("Test 3 - Delete from mounted directory")
+        print("Test 3 - Delete from archive (whiteout)")
         assert os.path.exists(os.path.join(mountdir, 'test.for.delete.txt'))
         os.remove(os.path.join(mountdir, 'test.for.delete.txt'))
         assert os.path.exists(os.path.join(mountdir, 'test.for.delete.txt')) == False
         
-        print("Test 4 - Append to mounted directory")
+        print("Test 4 - Overwrite to archive file")
+        with open(os.path.join(mountdir, 'test.for.overwrite.txt'), 'w') as f:
+            f.write('Hi')
+        print("Test 4.1 - Read from mounted directory")
+        with open(os.path.join(mountdir, 'test.for.overwrite.txt'), 'r') as f:
+            assert f.read() == 'Hi'
+
+        print("Test 5 - Append to archive file")
         with open(os.path.join(mountdir, 'test.txt'), 'a') as f:
             f.write(' World')
-        print("Test 4.1 - Read from mounted directory")
+        print("Test 5.1 - Read from mounted directory")
         with open(os.path.join(mountdir, 'test.txt'), 'r') as f:
             assert f.read() == 'Hello World'
 
