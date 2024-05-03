@@ -89,4 +89,4 @@ with tempfile.TemporaryDirectory() as tmpdir:
         print("Test Done!")
     finally:
         mounter.terminate()
-    
+        mounter.wait()
