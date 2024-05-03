@@ -718,6 +718,7 @@ func (fs *MayakashiFS) Open(path string, flags int) (int, uint64) {
 					os.Remove(*overlayPath + WRITEBACK_SUFFIX)
 					return -fuse.EIO, 0
 				}
+				println("try to reopen", path, flags)
 				return fs.Open(path, flags)
 			}
 			// return -fuse.EROFS, 0
