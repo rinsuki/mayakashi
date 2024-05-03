@@ -12,8 +12,21 @@ with tempfile.TemporaryDirectory() as tmpdir:
     os.mkdir(mountdir)
     overlaydir = os.path.join(tmpdir, 'overlay')
     os.mkdir(overlaydir)
-    subprocess.run(["./mayakashi.exe", "create", "-i", srcdir, "-o", os.path.join(tmpdir, 'hello'), "-j", "2"]).check_returncode()
-    mounter = subprocess.Popen(["./marmounter.exe", "./hello.mar", "mountpoint=" + mountdir, "overlaydir=" + overlaydir])
+    print("Create Archive")
+    subprocess.run([
+        "./mayakashi.exe",
+        "create",
+        "-i", srcdir,
+        "-o", os.path.join(tmpdir, 'hello'),
+        "-j", "2"
+    ]).check_returncode()
+    print("Mount Archive")
+    mounter = subprocess.Popen([
+        "./marmounter.exe",
+        os.path.join(tmpdir, "hello.mar"),
+        "mountpoint=" + mountdir,
+        "overlaydir=" + overlaydir
+    ])
     try:
         # first, we need to wait until mounter is ready
         start_time = time.time()
