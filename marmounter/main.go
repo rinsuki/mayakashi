@@ -1154,6 +1154,7 @@ func (fs *MayakashiFS) Truncate(path string, size int64, fh uint64) int {
 
 		return 0
 	}
+	println("tried to truncate on archive file", path, size)
 	return -fuse.EROFS
 }
 
