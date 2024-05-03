@@ -74,6 +74,7 @@ type MayakashiFS struct {
 	ZipCache             map[string]*xsync.Pool[*zip.ReadCloser]
 	PreloadGlobs         []string
 	PProfAddr            string
+	MountPoint           string
 }
 
 func recoverHandler() {
@@ -197,6 +198,13 @@ func (fs *MayakashiFS) ParseFile(file string) error {
 			od := strings.SplitN(file, "=", 2)
 			file = od[1]
 			fs.PProfAddr = file
+			return nil
+		}
+
+		if strings.HasPrefix(file, "mountpoint=") {
+			mp := strings.SplitN(file, "=", 2)
+			file = mp[1]
+			fs.MountPoint = file
 			return nil
 		}
 
@@ -1198,5 +1206,5 @@ func main() {
 			log.Fatal(http.ListenAndServe(fs.PProfAddr, nil))
 		}()
 	}
-	host.Mount("", fuseOpts)
+	host.Mount(fs.MountPoint, fuseOpts)
 }
