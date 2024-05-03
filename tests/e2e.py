@@ -9,7 +9,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     with open(os.path.join(srcdir, 'test.txt'), 'w') as f:
         f.write('Hello')
     mountdir = os.path.join(tmpdir, 'mount')
-    os.mkdir(mountdir)
+    # os.mkdir(mountdir)
     overlaydir = os.path.join(tmpdir, 'overlay')
     os.mkdir(overlaydir)
     print("Create Archive")
