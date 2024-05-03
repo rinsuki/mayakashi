@@ -1,0 +1,74 @@
+name: Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows, ubuntu]
+    runs-on: ${{ matrix.os }}-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }} 
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.21.6
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+      # from https://github.com/winfsp/cgofuse/blob/f87f5db493b56c5f4ebe482a1b7d02c7e5d572fa/.github/workflows/test.yml
+      - name: Install winfsp and winfsp-tests (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          $releases = Invoke-WebRequest https://api.github.com/repos/winfsp/winfsp/releases | `
+              ConvertFrom-Json
+
+          $asseturi = $releases[0].assets.browser_download_url | `
+              Where-Object { $_ -match "winfsp-.*\.msi" }
+          Invoke-WebRequest -Uri $asseturi -Out winfsp.msi
+          Start-Process -NoNewWindow -Wait msiexec "/i winfsp.msi /qn INSTALLLEVEL=1000"
+
+          $asseturi = $releases[0].assets.browser_download_url | `
+              Where-Object { $_ -match "winfsp-tests-.*\.zip" }
+          Invoke-WebRequest -Uri $asseturi -Out winfsp-tests.zip
+          Expand-Archive -Path winfsp-tests.zip
+          Copy-Item "C:\Program Files (x86)\WinFsp\bin\winfsp-x64.dll" winfsp-tests
+      - name: Install FUSE (Linux)
+        if: runner.os != 'Windows'
+        run: sudo apt-get install -y libfuse-dev
+      - name: Prepare protobuf
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.32.0
+          make
+      - name: Download dependencies
+        run: go mod download
+      - name: Build mayakashi
+        run: |
+          cargo build
+      - name: Copy mayakashi (Windows)
+        if: runner.os == 'Windows'
+        run: cp target/debug/mayakashi.exe mayakashi.exe
+      - name: Copy mayakashi (Linux)
+        if: runner.os != 'Windows'
+        run: cp target/debug/mayakashi mayakashi.exe
+      - name: Build marmounter
+        run: go build -o marmounter.exe ./marmounter
+        env:
+          CGO_ENABLED: ${{ runner.os == 'Windows' && '0' || '1' }}
+      - name: Run E2E test
+        run: python3 tests/e2e.py
+        env:
+          PYTHONUNBUFFERED: "1"
+          PYTHONUTF8: "1"

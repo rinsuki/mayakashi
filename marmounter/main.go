@@ -29,6 +29,7 @@ import (
 
 const INDEX_MAGIC = "MARI"
 const WHITEOUT_SUFFIX = ".__whiteout__"
+const WRITEBACK_SUFFIX = ".__writeback__"
 
 type FileInfo struct {
 	MarEntry    *pb.FileEntry
@@ -74,6 +75,7 @@ type MayakashiFS struct {
 	ZipCache             map[string]*xsync.Pool[*zip.ReadCloser]
 	PreloadGlobs         []string
 	PProfAddr            string
+	MountPoint           string
 }
 
 func recoverHandler() {
@@ -197,6 +199,13 @@ func (fs *MayakashiFS) ParseFile(file string) error {
 			od := strings.SplitN(file, "=", 2)
 			file = od[1]
 			fs.PProfAddr = file
+			return nil
+		}
+
+		if strings.HasPrefix(file, "mountpoint=") {
+			mp := strings.SplitN(file, "=", 2)
+			file = mp[1]
+			fs.MountPoint = file
 			return nil
 		}
 
@@ -626,12 +635,15 @@ func (fs *MayakashiFS) Open(path string, flags int) (int, uint64) {
 		return -fuse.ENOENT, 0
 	}
 
-	if overlayPath := fs.getOverlayPath(path); overlayPath != nil {
+	overlayPath := fs.getOverlayPath(path)
+	mayWantsWrite := false
+	if (flags&fuse.O_WRONLY != 0) || (flags&fuse.O_RDWR != 0) {
+		mayWantsWrite = true
+	}
+	if overlayPath != nil {
 		nativeFlag := os.O_RDONLY
-		mayWantsWrite := false
-		if flags&fuse.O_WRONLY == fuse.O_WRONLY || flags&fuse.O_RDWR == fuse.O_RDWR {
+		if mayWantsWrite {
 			nativeFlag |= os.O_RDWR
-			mayWantsWrite = true
 		}
 		if flags&fuse.O_APPEND == fuse.O_APPEND {
 			nativeFlag |= os.O_APPEND
@@ -644,6 +656,7 @@ func (fs *MayakashiFS) Open(path string, flags int) (int, uint64) {
 			// println("open overlay", overlayPath, nativeFlag)
 			fs.OverlayCount += 1
 			oc := fs.OverlayCount
+			println("open overlay", path, oc)
 			fs.OverlayFileHandlers.Store(oc, &SharedFileHandler{
 				File: fp,
 			})
@@ -662,13 +675,57 @@ func (fs *MayakashiFS) Open(path string, flags int) (int, uint64) {
 				return -fuse.ENOENT, 0
 			}
 		}
-		fs.Count += 1
-		if flags != fuse.O_RDONLY {
-			println("not O_RDONLY", path, flags)
-			// TODO: We should copy it to overlay and open it.
+		if mayWantsWrite {
+			println("not read-only, copy...", path, flags)
+			// We need to copy the file to overlay
+			if overlayPath != nil {
+				os.MkdirAll((*overlayPath)[:strings.LastIndex(*overlayPath, "/")], 0777)
+				fp, err := os.Create(*overlayPath + WRITEBACK_SUFFIX)
+				if err != nil {
+					println("failed to create writeback overlay", err)
+					return -fuse.EIO, 0
+				}
+				buf := make([]byte, 32768)
+				cp := int64(0)
+				failed := false
+				for {
+					readed := fs.Read(path, buf, cp, 0x7FFF_FFFF)
+					if readed < 0 {
+						println("failed to read", readed)
+						failed = true
+						break
+					}
+					if readed == 0 {
+						break
+					}
+					fp.Write(buf[:readed])
+					cp += int64(readed)
+				}
+				if !failed {
+					err = fp.Close()
+					if err != nil {
+						println("failed to close writeback overlay", err)
+						failed = true
+					}
+				}
+				if !failed {
+					err = os.Rename(*overlayPath+WRITEBACK_SUFFIX, *overlayPath)
+					if err != nil {
+						println("failed to rename writeback overlay", err)
+						failed = true
+					}
+				}
+				if failed {
+					os.Remove(*overlayPath + WRITEBACK_SUFFIX)
+					return -fuse.EIO, 0
+				}
+				println("try to reopen", path, flags)
+				return fs.Open(path, flags)
+			}
 			// return -fuse.EROFS, 0
 		}
 		// println("open", path)
+		fs.Count += 1
 		fs.LastDatRead = time.Now()
 		return 0, uint64(fs.Count)
 	}
@@ -1098,6 +1155,7 @@ func (fs *MayakashiFS) Truncate(path string, size int64, fh uint64) int {
 
 		return 0
 	}
+	println("tried to truncate on archive file", path, size, fh)
 	return -fuse.EROFS
 }
 
@@ -1198,5 +1256,5 @@ func main() {
 			log.Fatal(http.ListenAndServe(fs.PProfAddr, nil))
 		}()
 	}
-	host.Mount("", fuseOpts)
+	host.Mount(fs.MountPoint, fuseOpts)
 }
