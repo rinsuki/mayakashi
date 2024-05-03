@@ -6,8 +6,13 @@ import time
 with tempfile.TemporaryDirectory() as tmpdir:
     srcdir = os.path.join(tmpdir, 'src')
     os.mkdir(srcdir)
+
     with open(os.path.join(srcdir, 'test.txt'), 'w') as f:
         f.write('Hello')
+
+    with open(os.path.join(srcdir, 'test.for.delete.txt'), 'w') as f:
+        f.write('Hello')
+
     mountdir = os.path.join(tmpdir, 'mount')
     # os.mkdir(mountdir)
     overlaydir = os.path.join(tmpdir, 'overlay')
@@ -55,6 +60,18 @@ with tempfile.TemporaryDirectory() as tmpdir:
         print("Test 2.3 - Readable from mounted directory")
         with open(os.path.join(mountdir, 'test2.txt'), 'r') as f:
             assert f.read() == 'Hi'
+
+        print("Test 3 - Delete from mounted directory")
+        assert os.path.exists(os.path.join(mountdir, 'test.for.delete.txt'))
+        os.remove(os.path.join(mountdir, 'test.for.delete.txt'))
+        assert os.path.exists(os.path.join(mountdir, 'test.for.delete.txt')) == False
+        
+        print("Test 4 - Append to mounted directory")
+        with open(os.path.join(mountdir, 'test.txt'), 'a') as f:
+            f.write(' World')
+        print("Test 4.1 - Read from mounted directory")
+        with open(os.path.join(mountdir, 'test.txt'), 'r') as f:
+            assert f.read() == 'Hello World'
 
         print("Test Done!")
     finally:
