@@ -1,4 +1,4 @@
-use std::{path::PathBuf, io::{Write, Seek}, collections::VecDeque, sync::{Mutex, Arc}, thread, ffi::OsString};
+use std::{collections::{BTreeMap, HashMap, HashSet, VecDeque}, ffi::OsString, io::{Seek, Write}, path::PathBuf, sync::{Arc, Mutex}, thread};
 
 use prost::Message;
 use clap::Parser;
@@ -16,6 +16,9 @@ pub struct Args {
 
     #[arg(short, long)]
     jobs: usize,
+
+    #[arg(long)]
+    dedup: bool,
 }
 
 #[derive(Debug)]
@@ -121,22 +124,24 @@ fn compress_file(input_data: &[u8]) -> Vec<Chunk> {
             buf
         };
 
-        chunks.push(if compressed.len() >= src.len() {
-            // 圧縮できなかった
-            Chunk {
-                start: i,
-                original_size: src.len(),
-                compressed: src.to_vec(),
-                compressed_method: CompressedMethod::Passthrough,
-                // using_dictionary: false,
-            }
-        } else {
+        let is_compressed = compressed.len() < (src.len() / 4 * 3);
+
+        chunks.push(if is_compressed {
             // 圧縮できた
             Chunk {
                 start: i,
                 original_size: src.len(),
                 compressed,
                 compressed_method: CompressedMethod::Zstandard,
+                // using_dictionary: false,
+            }
+        } else {
+            // 圧縮できなかった
+            Chunk {
+                start: i,
+                original_size: src.len(),
+                compressed: src.to_vec(),
+                compressed_method: CompressedMethod::Passthrough,
                 // using_dictionary: false,
             }
         });
@@ -148,9 +153,8 @@ fn compress_file(input_data: &[u8]) -> Vec<Chunk> {
 
 pub fn main(args: Args) {
     let (mut files, directories) = walk_dir(&args.input);
-    files.sort_by_cached_key(|f| f.size);
-    files.reverse();
-    // println!("Files: {:?}", files);
+    files.sort_by_key(|f| std::cmp::Reverse(f.size));
+    // println!("Files: {:#?}", files);
 
     let files_count: usize = files.len();
 
@@ -173,10 +177,26 @@ pub fn main(args: Args) {
     let enc_start = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
 
     let mut threads = Vec::new();
+
+    let hash_to_offsets = Arc::new(Mutex::new(HashMap::<Vec<u8>, proto::FileEntry>::new()));
+
+    struct PartialFileInfo {
+        path: String,
+        modified_time: Option<prost_types::Timestamp>,
+        original_crc32: u32,
+        original_sha256: Vec<u8>,
+    }
+
+    let mut already_well_known_hashes = Arc::new(Mutex::new(HashSet::<Vec<u8>>::new()));
+    let mut deduped_file_entries = Arc::new(Mutex::new(Vec::<PartialFileInfo>::new()));
+
     for thread_no in 0..args.jobs {
         let workload = workload.clone();
         let input = args.input.to_str().unwrap().to_string();
         let outdatfile = outdatfile.clone();
+        let hash_to_offsets = hash_to_offsets.clone();
+        let already_well_known_hashes = already_well_known_hashes.clone();
+        let deduped_file_entries = deduped_file_entries.clone();
 
         threads.push(thread::spawn(move || {
             let mut entries = Vec::new();
@@ -195,13 +215,34 @@ pub fn main(args: Args) {
                 
                         data
                     };
-                    let chunks = compress_file(&input_data);
 
                     let relative_path = file.path.to_str().unwrap();
                     assert!(relative_path.starts_with(&input));
                     let relative_path = relative_path[input.len()..].to_string();
 
                     let modified_time = fp.metadata().unwrap().modified().unwrap();
+
+                    let original_crc32 = crc32fast::hash(&input_data);
+                    let original_sha256 = sha2::Sha256::digest(&input_data).to_vec();
+
+                    // もしもう圧縮済みの同 SHA-256 ファイルがあればそちらを使う
+                    if args.dedup {
+                        let mut already_well_known_hashes = already_well_known_hashes.lock().unwrap();
+                        if already_well_known_hashes.contains(&original_sha256) {
+                            println!("dedup {}", relative_path);
+                            let mut deduped_file_entries = deduped_file_entries.lock().unwrap();
+                            deduped_file_entries.push(PartialFileInfo {
+                                path: relative_path.clone(),
+                                modified_time: Some(prost_types::Timestamp::from(modified_time)),
+                                original_crc32,
+                                original_sha256,
+                            });
+                            continue;
+                        }
+                        already_well_known_hashes.insert(original_sha256.clone());
+                    }
+
+                    let chunks = compress_file(&input_data);
 
                     let mut chunk_infos = Vec::<proto::ChunkInfo>::with_capacity(chunks.len());
                     let mut compressed = Vec::new();
@@ -216,22 +257,25 @@ pub fn main(args: Args) {
                     println!("{}: {} ({} chunks, {} -> {} bytes)", thread_no, relative_path, chunk_infos.len(), input_data.len(), compressed.len());
 
                     use sha2::Digest;
-                    let file_info = proto::FileInfo {
-                        path: relative_path,
-                        chunks: chunk_infos,
-
-                        chunks_crc32: crc32fast::hash(&compressed),
-                        chunks_sha256: sha2::Sha256::digest(&compressed).to_vec(),
-
-                        original_crc32: crc32fast::hash(&input_data),
-                        original_sha256: sha2::Sha256::digest(&input_data).to_vec(),
-
-                        modified_time: Some(prost_types::Timestamp::from(modified_time)),
-                        // dictionary_size: 0,
-                        priority: 0,
-                    };
 
                     let entry = {
+                        let mut hash_to_offsets = hash_to_offsets.lock().unwrap();
+
+                        let file_info = proto::FileInfo {
+                            path: relative_path,
+                            chunks: chunk_infos,
+    
+                            chunks_crc32: crc32fast::hash(&compressed),
+                            chunks_sha256: sha2::Sha256::digest(&compressed).to_vec(),
+    
+                            original_crc32,
+                            original_sha256,
+    
+                            modified_time: Some(prost_types::Timestamp::from(modified_time)),
+                            // dictionary_size: 0,
+                            priority: 0,
+                        };
+
                         let offset = {
                             let mut outdatfile = outdatfile.lock().unwrap();
                             let offset = outdatfile.seek(std::io::SeekFrom::End(0)).unwrap();
@@ -240,12 +284,18 @@ pub fn main(args: Args) {
                             offset
                         };
 
-                        proto::FileEntry {
+                        let entry = proto::FileEntry {
                             info: Some(file_info),
                             file_index: 0,
                             body_offset: offset,
                             body_size: compressed.len() as u64,
+                        };
+
+                        if args.dedup {
+                            hash_to_offsets.insert(entry.info.as_ref().unwrap().original_sha256.clone(), entry.clone());
                         }
+
+                        entry
                     };
 
                     entries.push(entry);
@@ -272,6 +322,21 @@ pub fn main(args: Args) {
             // });
             ees.push(e);
         }
+    }
+
+    let hash_to_offsets = hash_to_offsets.lock().unwrap();
+    for e in deduped_file_entries.lock().unwrap().drain(0..) {
+        let dedup_target = hash_to_offsets.get(&e.original_sha256).unwrap().clone();
+        assert!(dedup_target.info.as_ref().unwrap().original_sha256 == e.original_sha256);
+        assert!(dedup_target.info.as_ref().unwrap().original_crc32 == e.original_crc32);
+        ees.push(proto::FileEntry {
+            info: Some(proto::FileInfo {
+                path: e.path,
+                modified_time: e.modified_time,
+                ..dedup_target.info.as_ref().unwrap().clone()
+            }),
+            ..dedup_target
+        });
     }
 
     let enc_end = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();

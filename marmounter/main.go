@@ -28,6 +28,7 @@ import (
 )
 
 const INDEX_MAGIC = "MARI"
+const WHITEOUT_SUFFIX = ".__whiteout__"
 
 type FileInfo struct {
 	MarEntry    *pb.FileEntry
@@ -520,6 +521,11 @@ func (fs *MayakashiFS) Getattr(path string, stat *fuse.Stat_t, fh uint64) int {
 	// fmt.Println("getattr", path)
 
 	if file, ok := fs.Files[NormalizeString(path)]; ok {
+		whiteoutPath := fs.getOverlayWhiteoutPath(path)
+		_, err := os.Stat(*whiteoutPath)
+		if err == nil {
+			return -fuse.ENOENT
+		}
 		GetFuseStatFromFileInfo(&file, stat)
 		return 0
 	}
@@ -556,6 +562,11 @@ func (fs *MayakashiFS) Readdir(path string,
 			haveSomeFilesInOverlay = true
 			for _, file := range files {
 				// println("readdir", path, file.Name())
+				filename := file.Name()
+				if strings.HasSuffix(filename, WHITEOUT_SUFFIX) {
+					filenames[NormalizeString(filename[:len(filename)-len(WHITEOUT_SUFFIX)])] = struct{}{}
+					continue
+				}
 				filenames[NormalizeString(file.Name())] = struct{}{}
 				var stat fuse.Stat_t
 				if file.IsDir() {
@@ -645,6 +656,12 @@ func (fs *MayakashiFS) Open(path string, flags int) (int, uint64) {
 	}
 
 	if _, ok := fs.Files[NormalizeString(path)]; ok {
+		if whiteoutPath := fs.getOverlayWhiteoutPath(path); whiteoutPath != nil {
+			_, err := os.Stat(*whiteoutPath)
+			if err == nil {
+				return -fuse.ENOENT, 0
+			}
+		}
 		fs.Count += 1
 		if flags != fuse.O_RDONLY {
 			println("not O_RDONLY", path, flags)
@@ -954,6 +971,7 @@ func (fs *MayakashiFS) Release(path string, fh uint64) int {
 			if err == nil {
 				fmt.Println("successfly remove scheduled files: ", path)
 				fs.RemoveRequestedPaths.Delete(NormalizeString(path))
+				fs.whiteoutIfNeeded(path)
 			} else {
 				fmt.Println("try to remove scheduled files: failed to remove", path, err)
 			}
@@ -977,11 +995,55 @@ func (fs *MayakashiFS) Access(path string, mask uint32) int {
 	return 0
 }
 
+func (fs *MayakashiFS) getOverlayWhiteoutPath(path string) *string {
+	overlayPath := fs.getOverlayPath(path)
+	if overlayPath == nil {
+		return nil
+	}
+	whiteoutPath := *overlayPath + WHITEOUT_SUFFIX
+	return &whiteoutPath
+}
+
+func (fs *MayakashiFS) whiteoutIfNeeded(path string) {
+	whiteoutPath := fs.getOverlayWhiteoutPath(path)
+	if whiteoutPath == nil {
+		return
+	}
+	// check is already whiteouted
+	_, err := os.Stat(*whiteoutPath)
+	if err == nil {
+		return
+	}
+	if !os.IsNotExist(err) {
+		fmt.Println("failed to stat whiteout", err)
+		return
+	}
+
+	// check actually we have a file in archive
+	if _, ok := fs.Files[NormalizeString(path)]; !ok {
+		return
+	}
+
+	// whiteout
+	err = os.MkdirAll((*whiteoutPath)[:strings.LastIndex(*whiteoutPath, "/")], 0777)
+	if err != nil {
+		println("failed to mkdir for create", err)
+		return
+	}
+	file, err := os.Create(*whiteoutPath)
+	if err != nil {
+		fmt.Println("failed to create whiteout", err)
+	} else {
+		file.Close()
+	}
+}
+
 func (fs *MayakashiFS) Unlink(path string) int {
 	defer recoverHandler()
 	if overlayPath := fs.getOverlayPath(path); overlayPath != nil {
 		err := os.Remove(*overlayPath)
 		if os.IsNotExist(err) {
+			fs.whiteoutIfNeeded(path)
 			return 0
 		}
 		if err != nil {
