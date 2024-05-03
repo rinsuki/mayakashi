@@ -57,3 +57,5 @@ jobs:
           CGO_ENABLED: "0"
       - name: Run E2E test
         run: python3 tests/e2e.py
+        env:
+          PYTHONUNBUFFERED: "1"
