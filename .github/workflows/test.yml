@@ -18,9 +18,8 @@ jobs:
       - name: Install protoc
         uses: arduino/setup-protoc@v3
       - name: Install WinFsp
-        shell: bash
         run: |
-          wget https://github.com/winfsp/winfsp/releases/download/v2.0/winfsp-2.0.23075.msi
+          curl -OL https://github.com/winfsp/winfsp/releases/download/v2.0/winfsp-2.0.23075.msi
           msiexec /i winfsp-2.0.23075.msi /quiet
           rm winfsp-2.0.23075.msi
       - name: Prepare protobuf
