@@ -20,7 +20,7 @@ jobs:
       - name: Install WinFsp
         run: |
           curl -OL https://github.com/winfsp/winfsp/releases/download/v2.0/winfsp-2.0.23075.msi
-          ls -l
+          ls
           msiexec /i winfsp-2.0.23075.msi /quiet
           rm winfsp-2.0.23075.msi
       - name: Prepare protobuf
