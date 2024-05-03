@@ -2,6 +2,7 @@ import tempfile
 import os
 import subprocess
 import time
+import glob
 
 with tempfile.TemporaryDirectory() as tmpdir:
     srcdir = os.path.join(tmpdir, 'src')
@@ -88,5 +89,10 @@ with tempfile.TemporaryDirectory() as tmpdir:
 
         print("Test Done!")
     finally:
+        print("--- START DEBUG INFO ---")
+        print("files:")
+        print("\n".join(glob.glob(os.path.join(overlaydir, '*'))))
+        print("--- END DEBUG INFO ---")
+        print("Terminate mounter")
         mounter.terminate()
         mounter.wait()
