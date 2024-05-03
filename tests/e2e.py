@@ -91,7 +91,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     finally:
         print("--- START DEBUG INFO ---")
         print("files:")
-        print("\n".join(glob.glob(os.path.join(overlaydir, '*'))))
+        print("\n".join(glob.glob(os.path.join(tmpdir, '**'), recursive=True)))
         print("--- END DEBUG INFO ---")
         print("Terminate mounter")
         mounter.terminate()
