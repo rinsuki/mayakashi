@@ -29,6 +29,7 @@ import (
 
 const INDEX_MAGIC = "MARI"
 const WHITEOUT_SUFFIX = ".__whiteout__"
+const WRITEBACK_SUFFIX = ".__writeback__"
 
 type FileInfo struct {
 	MarEntry    *pb.FileEntry
@@ -634,7 +635,8 @@ func (fs *MayakashiFS) Open(path string, flags int) (int, uint64) {
 		return -fuse.ENOENT, 0
 	}
 
-	if overlayPath := fs.getOverlayPath(path); overlayPath != nil {
+	overlayPath := fs.getOverlayPath(path)
+	if overlayPath != nil {
 		nativeFlag := os.O_RDONLY
 		mayWantsWrite := false
 		if flags&fuse.O_WRONLY == fuse.O_WRONLY || flags&fuse.O_RDWR == fuse.O_RDWR {
@@ -670,13 +672,55 @@ func (fs *MayakashiFS) Open(path string, flags int) (int, uint64) {
 				return -fuse.ENOENT, 0
 			}
 		}
-		fs.Count += 1
 		if flags != fuse.O_RDONLY {
 			println("not O_RDONLY", path, flags)
-			// TODO: We should copy it to overlay and open it.
+			// We need to copy the file to overlay
+			if overlayPath != nil {
+				fp, err := os.Create(*overlayPath + WRITEBACK_SUFFIX)
+				if err != nil {
+					println("failed to create writeback overlay", err)
+					return -fuse.EIO, 0
+				}
+				buf := make([]byte, 32768)
+				cp := int64(0)
+				failed := false
+				for {
+					readed := fs.Read(path, buf, cp, 0x7FFF_FFFF)
+					if readed < 0 {
+						println("failed to read", readed)
+						failed = true
+						break
+					}
+					if readed == 0 {
+						break
+					}
+					fp.Write(buf[:readed])
+					cp += int64(readed)
+				}
+				if !failed {
+					err = fp.Close()
+					if err != nil {
+						println("failed to close writeback overlay", err)
+						failed = true
+					}
+				}
+				if !failed {
+					err = os.Rename(*overlayPath+WRITEBACK_SUFFIX, *overlayPath)
+					if err != nil {
+						println("failed to rename writeback overlay", err)
+						failed = true
+					}
+				}
+				if failed {
+					os.Remove(*overlayPath + WRITEBACK_SUFFIX)
+					return -fuse.EIO, 0
+				}
+				return fs.Open(path, flags)
+			}
 			// return -fuse.EROFS, 0
 		}
 		// println("open", path)
+		fs.Count += 1
 		fs.LastDatRead = time.Now()
 		return 0, uint64(fs.Count)
 	}
