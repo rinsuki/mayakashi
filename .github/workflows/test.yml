@@ -8,6 +8,7 @@ on:
 jobs:
   e2e:
     strategy:
+      fail-fast: false
       matrix:
         os: [windows, ubuntu]
     runs-on: ${{ matrix.os }}-latest
