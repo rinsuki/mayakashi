@@ -17,7 +17,10 @@ with tempfile.TemporaryDirectory() as tmpdir:
         f.write('Hello')
 
     mountdir = os.path.join(tmpdir, 'mount')
-    # os.mkdir(mountdir)
+    # on Windows we shouldn't create mountdir before mounting
+    # but on *nix we need to create it before mounting
+    if os.name != 'nt':
+        os.mkdir(mountdir)
     overlaydir = os.path.join(tmpdir, 'overlay')
     os.mkdir(overlaydir)
     print("Create Archive")
