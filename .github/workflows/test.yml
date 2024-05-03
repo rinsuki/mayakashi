@@ -1,0 +1,29 @@
+name: Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  e2e_windows:
+    runs-on: Windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.21.6
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+      - name: Download dependencies
+        run: go mod download
+      - name: Build mayakashi
+        run: |
+          cargo build
+          cp target/debug/mayakashi.exe mayakashi.exe
+      - name: Build marmounter
+        run: go build -o marmounter.exe ./marmounter
+      - name: Run E2E test
+        run: python3 tests/e2e.py
