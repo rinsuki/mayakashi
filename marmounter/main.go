@@ -656,6 +656,7 @@ func (fs *MayakashiFS) Open(path string, flags int) (int, uint64) {
 			// println("open overlay", overlayPath, nativeFlag)
 			fs.OverlayCount += 1
 			oc := fs.OverlayCount
+			println("open overlay", path, oc)
 			fs.OverlayFileHandlers.Store(oc, &SharedFileHandler{
 				File: fp,
 			})
