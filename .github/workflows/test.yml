@@ -17,12 +17,23 @@ jobs:
           go-version: 1.21.6
       - name: Install protoc
         uses: arduino/setup-protoc@v3
-      - name: Install WinFsp
+      # from https://github.com/winfsp/cgofuse/blob/f87f5db493b56c5f4ebe482a1b7d02c7e5d572fa/.github/workflows/test.yml
+      - name: Install winfsp and winfsp-tests (Windows)
+        if: runner.os == 'Windows'
         run: |
-          curl -OL https://github.com/winfsp/winfsp/releases/download/v2.0/winfsp-2.0.23075.msi
-          ls
-          msiexec /i "winfsp-2.0.23075.msi" /qn /L*vx!
-          rm winfsp-2.0.23075.msi
+          $releases = Invoke-WebRequest https://api.github.com/repos/winfsp/winfsp/releases | `
+              ConvertFrom-Json
+
+          $asseturi = $releases[0].assets.browser_download_url | `
+              Where-Object { $_ -match "winfsp-.*\.msi" }
+          Invoke-WebRequest -Uri $asseturi -Out winfsp.msi
+          Start-Process -NoNewWindow -Wait msiexec "/i winfsp.msi /qn INSTALLLEVEL=1000"
+
+          $asseturi = $releases[0].assets.browser_download_url | `
+              Where-Object { $_ -match "winfsp-tests-.*\.zip" }
+          Invoke-WebRequest -Uri $asseturi -Out winfsp-tests.zip
+          Expand-Archive -Path winfsp-tests.zip
+          Copy-Item "C:\Program Files (x86)\WinFsp\bin\winfsp-x64.dll" winfsp-tests
       - name: Prepare protobuf
         run: |
           go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.32.0
