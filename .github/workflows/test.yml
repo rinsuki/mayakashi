@@ -19,6 +19,8 @@ jobs:
         uses: arduino/setup-protoc@v3
       - name: Download dependencies
         run: go mod download
+      - name: Prepare protobuf
+        run: make
       - name: Build mayakashi
         run: |
           cargo build
