@@ -1,9 +1,11 @@
-use std::{collections::{BTreeMap, HashMap, HashSet, VecDeque}, ffi::OsString, io::{Seek, Write}, path::PathBuf, sync::{Arc, Mutex}, thread};
+use std::{collections::{BTreeMap, HashMap, HashSet, VecDeque}, ffi::OsString, io::{Read, Seek, Write}, path::PathBuf, sync::{Arc, Mutex}, thread};
 
 use prost::Message;
 use clap::Parser;
 
 use crate::proto::{self, CompressedMethod};
+
+use rayon::prelude::*;
 
 #[derive(Parser)]
 #[command(name = "MAR Maker")]
@@ -46,7 +48,7 @@ fn walk_dir(dir: &PathBuf) -> (Vec<FileInfo>, Vec<PathBuf>) {
     return (files, directories);
 }
 
-const CHUNK_SIZE: usize = 4 * 1024 * 1024;
+const CHUNK_SIZE: usize = 512 * 1024;
 
 struct Chunk {
     start: usize,
@@ -57,17 +59,17 @@ struct Chunk {
 }
 
 fn compress_file(input_data: &[u8]) -> Vec<Chunk> {
-    // input_data を Zstandard で圧縮したもの
-    let compressed_with_zstd = {
-        let mut buf = Vec::<u8>::with_capacity(input_data.len() * 2);
-        let mut encoder = zstd::Encoder::new(&mut buf, 22).unwrap();
-        encoder.write_all(&input_data).unwrap();
-        encoder.finish().unwrap();
-        buf
-    };
+    // 入力サイズが 8MB 以下の時はチャンク毎圧縮をしない (十分に小さいためシーク時の遅さを気にする必要がない…ことにする)
+    if input_data.len() <= 8 * 1024 * 1024 {
+        // input_data を Zstandard で圧縮したもの
+        let compressed_with_zstd = {
+            let mut buf = Vec::<u8>::with_capacity(input_data.len() * 2);
+            let mut encoder = zstd::Encoder::new(&mut buf, 22).unwrap();
+            encoder.write_all(&input_data).unwrap();
+            encoder.finish().unwrap();
+            buf
+        };
 
-    // 入力サイズが 8 chunk 以下、あるいは Zstandard の圧縮結果が 2 chunk 以下の時はチャンク毎圧縮をしない (十分に小さいためシーク時の遅さを気にする必要がない…ことにする)
-    if input_data.len() <= (CHUNK_SIZE * 8) || compressed_with_zstd.len() <= (CHUNK_SIZE * 2) {
         // 圧縮成功したら圧縮したものを返す、そうでなかったらパススルー
         if input_data.len() > compressed_with_zstd.len() {
             return vec![Chunk {
@@ -90,62 +92,48 @@ fn compress_file(input_data: &[u8]) -> Vec<Chunk> {
 
     // 入力データを CHUNK_SIZE ずつに分割して圧縮する
     let mut chunks = Vec::<Chunk>::new();
+    let mut sources = Vec::<(usize, &[u8])>::new();
     for i in (0..input_data.len()).step_by(CHUNK_SIZE) {
         // 範囲を取得
         let end = (i + CHUNK_SIZE).min(input_data.len());
-        // 最後のチャンクがあった場合、それを拡張できないか考える
-        let last_chunk = chunks.last_mut();
-        if let Some(last_chunk) = last_chunk {
-            // 最終チャンクが Passthrough でなく、かつ圧縮後チャンクサイズが 3/4 以下の場合は拡張する
-            if last_chunk.compressed_method != CompressedMethod::Passthrough && last_chunk.compressed.len() < ((CHUNK_SIZE / 4) * 3) {
-                let extended_compressed = {
-                    let mut buf = Vec::<u8>::with_capacity(CHUNK_SIZE * 2);
-                    let mut encoder = zstd::Encoder::new(&mut buf, 22).unwrap();
-                    encoder.write_all(&input_data[last_chunk.start..end]).unwrap();
-                    encoder.finish().unwrap();
-                    buf
-                };
-                if extended_compressed.len() < CHUNK_SIZE {
-                    last_chunk.compressed_method = CompressedMethod::Zstandard;
-                    last_chunk.original_size = end - last_chunk.start;
-                    last_chunk.compressed = extended_compressed;
-                    // last_chunk.using_dictionary = false;
-                    continue;
+        let src = &input_data[i..end];
+        sources.push((i, src));
+    };
+
+    let chunks = sources
+        .par_iter()
+        .map(|(i, src)| {
+            let compressed = {
+                let mut buf = Vec::<u8>::with_capacity(CHUNK_SIZE * 2);
+                let mut encoder = zstd::Encoder::new(&mut buf, 22).unwrap();
+                encoder.write_all(src).unwrap();
+                encoder.finish().unwrap();
+                buf
+            };
+    
+            let is_compressed = compressed.len() < (src.len() / 4 * 3);
+    
+            if is_compressed {
+                // 圧縮できた
+                Chunk {
+                    start: *i,
+                    original_size: src.len(),
+                    compressed,
+                    compressed_method: CompressedMethod::Zstandard,
+                    // using_dictionary: false,
+                }
+            } else {
+                // 圧縮できなかった
+                Chunk {
+                    start: *i,
+                    original_size: src.len(),
+                    compressed: src.to_vec(),
+                    compressed_method: CompressedMethod::Passthrough,
+                    // using_dictionary: false,
                 }
             }
-        }
-        // 最終チャンクを拡張できなかった (あるいは最終チャンクがない) 場合、新しいチャンクを作る
-        let src = &input_data[i..end];
-        let compressed = {
-            let mut buf = Vec::<u8>::with_capacity(CHUNK_SIZE * 2);
-            let mut encoder = zstd::Encoder::new(&mut buf, 22).unwrap();
-            encoder.write_all(src).unwrap();
-            encoder.finish().unwrap();
-            buf
-        };
-
-        let is_compressed = compressed.len() < (src.len() / 4 * 3);
-
-        chunks.push(if is_compressed {
-            // 圧縮できた
-            Chunk {
-                start: i,
-                original_size: src.len(),
-                compressed,
-                compressed_method: CompressedMethod::Zstandard,
-                // using_dictionary: false,
-            }
-        } else {
-            // 圧縮できなかった
-            Chunk {
-                start: i,
-                original_size: src.len(),
-                compressed: src.to_vec(),
-                compressed_method: CompressedMethod::Passthrough,
-                // using_dictionary: false,
-            }
-        });
-    };
+        })
+        .collect();
 
     return chunks;
 }
