@@ -5,6 +5,8 @@ on:
     branches: [ main ]
   pull_request:
 
+permissions: {}
+
 jobs:
   e2e:
     strategy:
@@ -28,6 +30,8 @@ jobs:
           go-version: 1.21.6
       - name: Install protoc
         uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       # from https://github.com/winfsp/cgofuse/blob/f87f5db493b56c5f4ebe482a1b7d02c7e5d572fa/.github/workflows/test.yml
       - name: Install winfsp and winfsp-tests (Windows)
         if: runner.os == 'Windows'
