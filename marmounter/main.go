@@ -1027,7 +1027,7 @@ func (fs *MayakashiFS) Write(path string, buff []byte, offset int64, fh uint64) 
 	defer file.Mutex.Unlock()
 	var err error
 	if file.IsAppendMode {
-		current, err2 := file.File.Seek(2, 0)
+		current, err2 := file.File.Seek(0, 2)
 		if err2 != nil {
 			fmt.Println("failed to seek for retriving current length on append mode", err2)
 			return -fuse.EIO
