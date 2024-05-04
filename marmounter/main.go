@@ -1111,6 +1111,17 @@ func (fs *MayakashiFS) whiteoutIfNeeded(path string) {
 	}
 }
 
+func (fs *MayakashiFS) removeWhiteout(path string) {
+	whiteoutPath := fs.getOverlayWhiteoutPath(path)
+	if whiteoutPath == nil {
+		return
+	}
+	err := os.Remove(*whiteoutPath)
+	if err != nil {
+		fmt.Println("failed to remove whiteout", err)
+	}
+}
+
 func (fs *MayakashiFS) Unlink(path string) int {
 	defer recoverHandler()
 	if overlayPath := fs.getOverlayPath(path); overlayPath != nil {
@@ -1170,6 +1181,30 @@ func (fs *MayakashiFS) Truncate(path string, size int64, fh uint64) int {
 		}
 
 		return 0
+	}
+
+	// ファイルを開かずに truncate される場合がある
+	if overlayPath := fs.getOverlayPath(path); overlayPath != nil {
+		err := os.Truncate(*overlayPath, size)
+		if err == nil {
+			return 0
+		} else if os.IsNotExist(err) && size == 0 {
+			// archive にしかファイルがない場合は size == 0 だけ対応 (writeback が面倒)
+			if _, ok := fs.Files[NormalizeString(path)]; !ok {
+				return -fuse.ENOENT
+			}
+			fs.removeWhiteout(path)
+			fp, err := os.Create(*overlayPath)
+			if err != nil {
+				fmt.Println("failed to create", err)
+				return -fuse.EIO
+			}
+			fp.Close()
+			return 0
+		} else {
+			fmt.Println("failed to truncate", err)
+			return -fuse.EIO
+		}
 	}
 	println("tried to truncate on archive file", path, size, fh)
 	return -fuse.EROFS
