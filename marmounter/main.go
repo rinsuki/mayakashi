@@ -48,8 +48,9 @@ type ChunkCache struct {
 }
 
 type SharedFileHandler struct {
-	File  *os.File
-	Mutex sync.Mutex
+	File         *os.File
+	Mutex        sync.Mutex
+	IsAppendMode bool
 }
 
 type RenameRequest struct {
