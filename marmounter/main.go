@@ -674,7 +674,8 @@ func (fs *MayakashiFS) Open(path string, flags int) (int, uint64) {
 			oc := fs.OverlayCount
 			println("open overlay", path, oc)
 			fs.OverlayFileHandlers.Store(oc, &SharedFileHandler{
-				File: fp,
+				File:         fp,
+				IsAppendMode: flags&fuse.O_APPEND != 0,
 			})
 			return 0, oc
 		}
@@ -1023,7 +1024,21 @@ func (fs *MayakashiFS) Write(path string, buff []byte, offset int64, fh uint64) 
 	}
 	file.Mutex.Lock()
 	defer file.Mutex.Unlock()
-	_, err := file.File.WriteAt(buff, offset)
+	var err error
+	if file.IsAppendMode {
+		current, err2 := file.File.Seek(2, 0)
+		if err2 != nil {
+			fmt.Println("failed to seek for retriving current length on append mode", err2)
+			return -fuse.EIO
+		}
+		if current != offset {
+			fmt.Println("using invalid offset on append mode", current, offset)
+			return -fuse.EINVAL
+		}
+		_, err = file.File.Write(buff)
+	} else {
+		_, err = file.File.WriteAt(buff, offset)
+	}
 	if err != nil {
 		fmt.Println("failed to write", err)
 		return -fuse.EIO
