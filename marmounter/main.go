@@ -395,6 +395,7 @@ func (fs *MayakashiFS) parseMARFile(file string, o ArchiveReadOptions) error {
 
 	fileCount := 0
 
+	ourFiles := map[string]struct{}{}
 	for _, entry := range indexFile.Entries {
 		origPath := o.GetFilePath(entry.Info.Path)
 		if origPath == "" {
@@ -402,12 +403,27 @@ func (fs *MayakashiFS) parseMARFile(file string, o ArchiveReadOptions) error {
 		}
 
 		lowerPath := NormalizeString(origPath)
+		dir := origPath[:strings.LastIndex(origPath, "/")]
+
+		if strings.HasSuffix(lowerPath, WHITEOUT_SUFFIX) {
+			lowerPath = lowerPath[:len(lowerPath)-len(WHITEOUT_SUFFIX)]
+			if _, ok := ourFiles[lowerPath]; ok {
+				fmt.Println("whiteout but including ", origPath)
+				continue
+			}
+			origPath = origPath[:len(origPath)-len(WHITEOUT_SUFFIX)]
+			println("whiteout", origPath)
+			delete(fs.Files, lowerPath)
+			delete(fs.Directories[fs.getDirInfo(dir)].Files, NormalizeString(origPath))
+			continue
+		}
+		ourFiles[lowerPath] = struct{}{}
+
 		fs.Files[lowerPath] = FileInfo{
 			MarEntry:    entry,
 			ArchiveFile: file,
 		}
 
-		dir := origPath[:strings.LastIndex(origPath, "/")]
 		fs.Directories[fs.getDirInfo(dir)].Files[NormalizeString(origPath)] = origPath
 		fileCount += 1
 	}
