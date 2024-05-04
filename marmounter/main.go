@@ -704,21 +704,24 @@ func (fs *MayakashiFS) Open(path string, flags int) (int, uint64) {
 					println("failed to create writeback overlay", err)
 					return -fuse.EIO, 0
 				}
-				buf := make([]byte, 32768)
-				cp := int64(0)
+				needsCopy := (flags & fuse.O_TRUNC) == 0
 				failed := false
-				for {
-					readed := fs.Read(path, buf, cp, 0x7FFF_FFFF)
-					if readed < 0 {
-						println("failed to read", readed)
-						failed = true
-						break
+				if needsCopy {
+					buf := make([]byte, 32768)
+					cp := int64(0)
+					for {
+						readed := fs.Read(path, buf, cp, 0x7FFF_FFFF)
+						if readed < 0 {
+							println("failed to read", readed)
+							failed = true
+							break
+						}
+						if readed == 0 {
+							break
+						}
+						fp.Write(buf[:readed])
+						cp += int64(readed)
 					}
-					if readed == 0 {
-						break
-					}
-					fp.Write(buf[:readed])
-					cp += int64(readed)
 				}
 				if !failed {
 					err = fp.Close()
