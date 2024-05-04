@@ -79,6 +79,18 @@ with tempfile.TemporaryDirectory() as tmpdir:
         print("Test 4.1 - Read from mounted directory")
         with open(os.path.join(mountdir, 'test.for.overwrite.txt'), 'r') as f:
             assert f.read() == 'Hi'
+        print("Test 4.2 - Remove from mounted directory")
+        os.remove(os.path.join(mountdir, 'test.for.overwrite.txt'))
+        print("Test 4.3 - Ensure to not exists on mounted directory")
+        assert os.path.exists(os.path.join(mountdir, 'test.for.overwrite.txt')) == False
+        print("Test 4.4 - Can be re-create to removed file")
+        with open(os.path.join(mountdir, 'test.for.overwrite.txt'), 'w') as f:
+            f.write('Hi2')
+        print("Test 4.5 - Read from mounted directory")
+        with open(os.path.join(mountdir, 'test.for.overwrite.txt'), 'r') as f:
+            assert f.read() == 'Hi2'
+        print("Test 4.5.1 - There is no whiteout anymore")
+        assert os.path.exists(os.path.join(overlaydir, 'test.for.overwrite.txt.__whiteout__')) == False
 
         print("Test 5 - Append to archive file")
         with open(os.path.join(mountdir, 'test.txt'), 'a') as f:

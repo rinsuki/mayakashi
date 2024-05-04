@@ -670,6 +670,7 @@ func (fs *MayakashiFS) Open(path string, flags int) (int, uint64) {
 		}
 		fp, err := os.OpenFile(*overlayPath, nativeFlag, 0644)
 		if err == nil {
+			fs.removeWhiteout(path)
 			// println("open overlay", overlayPath, nativeFlag)
 			fs.OverlayCount += 1
 			oc := fs.OverlayCount
@@ -1150,6 +1151,7 @@ func (fs *MayakashiFS) Unlink(path string) int {
 			fmt.Println("failed to remove, scheduled", err)
 			fs.RemoveRequestedPaths.Store(NormalizeString(path), *overlayPath)
 		}
+		fs.whiteoutIfNeeded(path)
 		return 0
 	}
 
