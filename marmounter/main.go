@@ -1133,7 +1133,7 @@ func (fs *MayakashiFS) removeWhiteout(path string) {
 		return
 	}
 	err := os.Remove(*whiteoutPath)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		fmt.Println("failed to remove whiteout", err)
 	}
 }
