@@ -8,7 +8,10 @@ def make_test_source(srcdir: str):
     files = {
         "test.txt": "Hello",
         "test.for.delete.txt": "Hello",
+        "test.for.delete.2.txt": "Hello2",
         "test.for.overwrite.txt": "Hello",
+        "test.for.rename.txt": "Hello",
+        "test.for.rename.after.overwrite.txt": "Hello",
     }
 
     for filename, content in files.items():
@@ -67,6 +70,45 @@ def run_test(mountdir: str, overlaydir: str | None):
     with open(os.path.join(mountdir, 'test.txt'), 'r') as f:
         assert f.read() == 'Hello World'
 
+    print("Test 6 - whiteoutしたファイルにリネームで上書き")
+    os.remove(os.path.join(mountdir, 'test.for.delete.2.txt'))
+    assert os.path.exists(os.path.join(mountdir, 'test.for.delete.2.txt')) == False
+    with open(os.path.join(mountdir, 'test.for.delete.2.1.txt'), 'w') as f:
+        f.write('Hi')
+    os.rename(os.path.join(mountdir, 'test.for.delete.2.1.txt'), os.path.join(mountdir, 'test.for.delete.2.txt'))
+    print("Test 6.1 - マウントポイントに存在することを確認")
+    assert os.path.exists(os.path.join(mountdir, 'test.for.delete.2.txt'))
+    if overlaydir is not None:
+        print("Test 6.1.1 - whiteoutが消えていることを確認")
+        assert os.path.exists(os.path.join(overlaydir, 'test.for.delete.2.txt.__whiteout__')) == False
+    print("Test 6.2 - マウントポイントから読み取れることを確認")
+    with open(os.path.join(mountdir, 'test.for.delete.2.txt'), 'r') as f:
+        assert f.read() == 'Hi'
+
+    print("Test 7 - アーカイブ内ファイルの上書き後リネーム")
+    with open(os.path.join(mountdir, 'test.for.rename.after.overwrite.txt'), 'a') as f:
+        pass
+    os.rename(os.path.join(mountdir, 'test.for.rename.after.overwrite.txt'), os.path.join(mountdir, 'test.for.rename2.after.overwrite.txt'))
+    print("Test 7.1 - マウントポイントに存在することを確認")
+    assert os.path.exists(os.path.join(mountdir, 'test.for.rename.after.overwrite.txt')) == False
+    assert os.path.exists(os.path.join(mountdir, 'test.for.rename2.after.overwrite.txt'))
+    with open(os.path.join(mountdir, 'test.for.rename2.after.overwrite.txt'), 'r') as f:
+        assert f.read() == 'Hello'
+    print("Test 7.2 - 再度リネーム")
+    os.rename(os.path.join(mountdir, 'test.for.rename2.after.overwrite.txt'), os.path.join(mountdir, 'test.for.rename.after.overwrite.txt'))
+    print("Test 7.3 - マウントポイントに存在することを確認")
+    assert os.path.exists(os.path.join(mountdir, 'test.for.rename2.after.overwrite.txt')) == False
+    assert os.path.exists(os.path.join(mountdir, 'test.for.rename.after.overwrite.txt'))
+    with open(os.path.join(mountdir, 'test.for.rename.after.overwrite.txt'), 'r') as f:
+        assert f.read() == 'Hello'
+
+    if overlaydir is None: # TODO: アーカイブ内ファイルのリネームは対応できていない
+        print("Test 8 - アーカイブ内ファイルのリネーム")
+        os.rename(os.path.join(mountdir, 'test.for.rename.txt'), os.path.join(mountdir, 'test.for.rename2.txt'))
+        print("Test 8.1 - マウントポイントに存在することを確認")
+        assert os.path.exists(os.path.join(mountdir, 'test.for.rename.txt')) == False
+        assert os.path.exists(os.path.join(mountdir, 'test.for.rename2.txt'))
+
     print("Test Done!")
 
 def main():
@@ -109,6 +151,8 @@ def main():
                 if os.path.exists(os.path.join(mountdir, 'test.txt')):
                     break
             run_test(mountdir, overlaydir)
+            print(" --- Run with actual file system ---")
+            run_test(srcdir, None)
         finally:
             print("--- START DEBUG INFO ---")
             print("files:")

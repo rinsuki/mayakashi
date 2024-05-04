@@ -54,8 +54,10 @@ type SharedFileHandler struct {
 }
 
 type RenameRequest struct {
-	OldPath string
-	NewPath string
+	OldPath       string
+	NewPath       string
+	OldPathInFuse string
+	NewPathInFuse string
 }
 
 type MayakashiFS struct {
@@ -1074,6 +1076,8 @@ func (fs *MayakashiFS) Release(path string, fh uint64) int {
 			if err == nil {
 				fmt.Println("successfly rename scheduled files: ", path)
 				fs.RenameRequestedPaths.Delete(NormalizeString(path))
+				fs.whiteoutIfNeeded(overlayPath.OldPathInFuse)
+				fs.removeWhiteout(overlayPath.NewPathInFuse)
 			} else {
 				fmt.Println("try to rename scheduled files: failed to rename", path, err)
 			}
@@ -1180,13 +1184,21 @@ func (fs *MayakashiFS) Rename(oldpath_in_fuse string, newpath_in_fuse string) in
 			fmt.Println("tried to rename but read-only", oldpath_in_fuse, newpath_in_fuse)
 			return -fuse.EPERM
 		}
+		if os.IsNotExist(err) {
+			fmt.Println("tried to rename but not found (maybe from archive?)", oldpath_in_fuse, newpath_in_fuse)
+			return -fuse.ENOENT
+		}
 		fmt.Println("failed to rename, queued", err)
 		fs.RenameRequestedPaths.Store(NormalizeString(oldpath_in_fuse), RenameRequest{
-			OldPath: *oldPath,
-			NewPath: *newPath,
+			OldPath:       *oldPath,
+			NewPath:       *newPath,
+			OldPathInFuse: oldpath_in_fuse,
+			NewPathInFuse: newpath_in_fuse,
 		})
 		return 0
 	}
+	fs.whiteoutIfNeeded(oldpath_in_fuse)
+	fs.removeWhiteout(newpath_in_fuse)
 
 	return 0
 }
