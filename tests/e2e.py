@@ -76,6 +76,7 @@ def run_test(mountdir: str, overlaydir: str | None):
     with open(os.path.join(mountdir, 'test.for.delete.2.1.txt'), 'w') as f:
         f.write('Hi')
     os.rename(os.path.join(mountdir, 'test.for.delete.2.1.txt'), os.path.join(mountdir, 'test.for.delete.2.txt'))
+    time.sleep(0.1) # wait for close will done
     print("Test 6.1 - マウントポイントに存在することを確認")
     assert os.path.exists(os.path.join(mountdir, 'test.for.delete.2.txt'))
     if overlaydir is not None:
@@ -89,6 +90,7 @@ def run_test(mountdir: str, overlaydir: str | None):
     with open(os.path.join(mountdir, 'test.for.rename.after.overwrite.txt'), 'a') as f:
         pass
     os.rename(os.path.join(mountdir, 'test.for.rename.after.overwrite.txt'), os.path.join(mountdir, 'test.for.rename2.after.overwrite.txt'))
+    time.sleep(0.1) # wait for close will done
     print("Test 7.1 - マウントポイントに存在することを確認")
     assert os.path.exists(os.path.join(mountdir, 'test.for.rename.after.overwrite.txt')) == False
     assert os.path.exists(os.path.join(mountdir, 'test.for.rename2.after.overwrite.txt'))
@@ -96,6 +98,7 @@ def run_test(mountdir: str, overlaydir: str | None):
         assert f.read() == 'Hello'
     print("Test 7.2 - 再度リネーム")
     os.rename(os.path.join(mountdir, 'test.for.rename2.after.overwrite.txt'), os.path.join(mountdir, 'test.for.rename.after.overwrite.txt'))
+    time.sleep(0.1) # wait for close will done
     print("Test 7.3 - マウントポイントに存在することを確認")
     assert os.path.exists(os.path.join(mountdir, 'test.for.rename2.after.overwrite.txt')) == False
     assert os.path.exists(os.path.join(mountdir, 'test.for.rename.after.overwrite.txt'))
@@ -105,6 +108,7 @@ def run_test(mountdir: str, overlaydir: str | None):
     if overlaydir is None: # TODO: アーカイブ内ファイルのリネームは対応できていない
         print("Test 8 - アーカイブ内ファイルのリネーム")
         os.rename(os.path.join(mountdir, 'test.for.rename.txt'), os.path.join(mountdir, 'test.for.rename2.txt'))
+        time.sleep(0.1) # wait for close will done
         print("Test 8.1 - マウントポイントに存在することを確認")
         assert os.path.exists(os.path.join(mountdir, 'test.for.rename.txt')) == False
         assert os.path.exists(os.path.join(mountdir, 'test.for.rename2.txt'))
