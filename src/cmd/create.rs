@@ -209,11 +209,24 @@ pub fn main(args: Args) {
 
                     let mut fp: std::fs::File = std::fs::File::open(&file.path).unwrap();
                     let metadata = fp.metadata().unwrap();
-                    let input_data = {
+                    let (input_data, original_crc32, original_sha256) = {
+                        let mut crc32_hasher = crc32fast::Hasher::new();
+                        let mut sha256_hasher = sha2::Sha256::new();
                         let mut data = Vec::<u8>::with_capacity(metadata.len() as usize);
-                        std::io::copy(&mut fp, &mut data).unwrap();
-                
-                        data
+
+                        let mut reader = std::io::BufReader::new(&mut fp);
+                        loop {
+                            let mut buf = [0; 32768];
+                            let n = reader.read(&mut buf).unwrap();
+                            if n == 0 {
+                                break;
+                            }
+                            crc32_hasher.update(&buf[..n]);
+                            sha256_hasher.update(&buf[..n]);
+                            data.extend_from_slice(&buf[..n]);
+                        }
+
+                        (data, crc32_hasher.finalize(), sha256_hasher.finalize().to_vec())
                     };
 
                     let relative_path = file.path.to_str().unwrap();
@@ -221,9 +234,6 @@ pub fn main(args: Args) {
                     let relative_path = relative_path[input.len()..].to_string();
 
                     let modified_time = fp.metadata().unwrap().modified().unwrap();
-
-                    let original_crc32 = crc32fast::hash(&input_data);
-                    let original_sha256 = sha2::Sha256::digest(&input_data).to_vec();
 
                     // もしもう圧縮済みの同 SHA-256 ファイルがあればそちらを使う
                     if args.dedup {
