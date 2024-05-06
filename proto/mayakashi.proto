@@ -6,6 +6,7 @@ import "google/protobuf/timestamp.proto";
 enum CompressedMethod {
     PASSTHROUGH = 0;
     ZSTANDARD = 1;
+    LZ4 = 2;
 }
 
 message FileInfo {

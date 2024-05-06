@@ -58,7 +58,22 @@ struct Chunk {
     // using_dictionary: bool,
 }
 
+static RAYON_LOCK: Mutex<()> = Mutex::new(());
+
 fn compress_file(input_data: &[u8]) -> Vec<Chunk> {
+    // 小さいファイルはサクッと読みたさそうなので適当にlz4で圧縮する
+    if input_data.len() <= CHUNK_SIZE {
+        let compressed_with_lz4 = lz4::block::compress(input_data, Some(lz4::block::CompressionMode::HIGHCOMPRESSION(12)), false).unwrap();
+        if input_data.len() > compressed_with_lz4.len() {
+            return vec![Chunk {
+                start: 0,
+                original_size: input_data.len(),
+                compressed: compressed_with_lz4,
+                compressed_method: CompressedMethod::Lz4,
+                // using_dictionary: false,
+            }];
+        }
+    }
     // 入力サイズが 8MB 以下の時はチャンク毎圧縮をしない (十分に小さいためシーク時の遅さを気にする必要がない…ことにする)
     if input_data.len() <= 8 * 1024 * 1024 {
         // input_data を Zstandard で圧縮したもの
@@ -100,15 +115,22 @@ fn compress_file(input_data: &[u8]) -> Vec<Chunk> {
         sources.push((i, src));
     };
 
+    let lock = RAYON_LOCK.lock();
+
+    println!("start");
     let chunks = sources
         .par_iter()
         .map(|(i, src)| {
-            let compressed = {
-                let mut buf = Vec::<u8>::with_capacity(CHUNK_SIZE * 2);
-                let mut encoder = zstd::Encoder::new(&mut buf, 22).unwrap();
-                encoder.write_all(src).unwrap();
-                encoder.finish().unwrap();
-                buf
+            let should_use_lz4 = *i == 0;
+            let compressed = match should_use_lz4 {
+                true => lz4::block::compress(src, Some(lz4::block::CompressionMode::HIGHCOMPRESSION(12)), false).unwrap(),
+                false => {
+                    let mut buf = Vec::<u8>::with_capacity(CHUNK_SIZE * 2);
+                    let mut encoder = zstd::Encoder::new(&mut buf, 22).unwrap();
+                    encoder.write_all(src).unwrap();
+                    encoder.finish().unwrap();
+                    buf
+                }
             };
     
             let is_compressed = compressed.len() < (src.len() / 4 * 3);
@@ -119,7 +141,10 @@ fn compress_file(input_data: &[u8]) -> Vec<Chunk> {
                     start: *i,
                     original_size: src.len(),
                     compressed,
-                    compressed_method: CompressedMethod::Zstandard,
+                    compressed_method: match should_use_lz4 {
+                        true => CompressedMethod::Lz4,
+                        false => CompressedMethod::Zstandard
+                    },
                     // using_dictionary: false,
                 }
             } else {
@@ -135,13 +160,15 @@ fn compress_file(input_data: &[u8]) -> Vec<Chunk> {
         })
         .collect();
 
+    _ = lock;
+    println!("end");
     return chunks;
 }
 
 
 pub fn main(args: Args) {
     let (mut files, directories) = walk_dir(&args.input);
-    files.sort_by_key(|f| std::cmp::Reverse(f.size));
+    files.sort_by_key(|f| f.path.to_str().unwrap().to_string());
     // println!("Files: {:#?}", files);
 
     let files_count: usize = files.len();

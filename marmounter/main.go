@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bufio"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -22,6 +23,7 @@ import (
 	"github.com/bradenaw/juniper/xsync"
 	"github.com/dgraph-io/ristretto"
 	"github.com/klauspost/compress/zstd"
+	"github.com/pierrec/lz4/v4"
 	pb "github.com/rinsuki/mayakashi/proto"
 	"github.com/winfsp/cgofuse/fuse"
 	"google.golang.org/protobuf/proto"
@@ -251,6 +253,15 @@ func (fs *MayakashiFS) ParseFile(file string) error {
 				}
 			}
 			return nil
+		}
+
+		if file == "showhashes" {
+			for _, f := range fs.Files {
+				if f.MarEntry != nil {
+					fmt.Printf("%s\t%s\n", hex.EncodeToString(f.MarEntry.Info.OriginalSha256), f.MarEntry.Info.Path)
+				}
+			}
+			os.Exit(0)
 		}
 
 		if shouldBreak {
@@ -904,7 +915,7 @@ func (fs *MayakashiFS) readInternalFromMarEntry(path string, buff []byte, offset
 
 	pool := GetFilePoolFromPath(marFileName)
 
-	if targetChunk.CompressedMethod == pb.CompressedMethod_ZSTANDARD {
+	if targetChunk.CompressedMethod != pb.CompressedMethod_PASSTHROUGH {
 		// println("zstd")
 		cacheKey := fmt.Sprintf("%s#%d#%d", marFileName, datStart, chunkNo)
 		cachedData, ok := fs.ChunkCache.Get(cacheKey)
@@ -925,16 +936,9 @@ func (fs *MayakashiFS) readInternalFromMarEntry(path string, buff []byte, offset
 				fs.SlowReadLog.Write([]byte(path + "\n"))
 			}
 
-			decoder, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(0))
-			if err != nil {
-				println("failed to read", err)
-				return -fuse.EIO
-			}
-
-			decoded, err = decoder.DecodeAll(compressedBytes, make([]byte, 0, int(targetChunk.OriginalLength)))
-			if err != nil {
-				println("failed to decode", err)
-				return -fuse.EIO
+			res := fs.readChunk(targetChunk, &compressedBytes, &decoded)
+			if res != 0 {
+				return res
 			}
 
 			fs.ChunkCache.Set(cacheKey, &ChunkCache{
@@ -955,23 +959,53 @@ func (fs *MayakashiFS) readInternalFromMarEntry(path string, buff []byte, offset
 		// println("ok")
 
 		return readed
-	} else if targetChunk.CompressedMethod == pb.CompressedMethod_PASSTHROUGH {
-		// println("passthrough", path)
-		remainsLength := int(targetChunk.OriginalLength) - int(offset-chunkStart)
-		if len(buff) > remainsLength {
-			fmt.Println("!!!OVERLOAD!!!", len(buff), remainsLength)
-			buff = buff[:remainsLength]
-		}
-		readed, err := pool.ReadAt(buff, datStart+(offset-chunkStart))
+	}
+	// passthrough
+	// println("passthrough", path)
+	remainsLength := int(targetChunk.OriginalLength) - int(offset-chunkStart)
+	if len(buff) > remainsLength {
+		fmt.Println("!!!OVERLOAD!!!", len(buff), remainsLength)
+		buff = buff[:remainsLength]
+	}
+	readed, err := pool.ReadAt(buff, datStart+(offset-chunkStart))
+	if err != nil {
+		fmt.Println("failed to read from passthrough", err)
+		return -fuse.EIO
+	}
+	return readed
+}
+
+func (fs *MayakashiFS) readChunk(targetChunk *pb.ChunkInfo, compressedBytes *[]byte, decoded *[]byte) int {
+	if targetChunk.CompressedMethod == pb.CompressedMethod_ZSTANDARD {
+		decoder, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(0))
 		if err != nil {
-			fmt.Println("failed to read from passthrough", err)
+			println("failed to read", err)
 			return -fuse.EIO
 		}
-		return readed
+
+		*decoded, err = decoder.DecodeAll(*compressedBytes, make([]byte, 0, int(targetChunk.OriginalLength)))
+		if err != nil {
+			println("failed to decode", err)
+			return -fuse.EIO
+		}
+	} else if targetChunk.CompressedMethod == pb.CompressedMethod_LZ4 {
+		*decoded = make([]byte, targetChunk.OriginalLength)
+		decoded_size, err := lz4.UncompressBlock(*compressedBytes, *decoded)
+		if err != nil {
+			println("failed to uncompress lz4 block", err)
+			return -fuse.EIO
+		}
+		if uint32(decoded_size) != targetChunk.OriginalLength {
+			println("invalid decoded size", decoded_size, targetChunk.OriginalLength)
+			return -fuse.EIO
+		}
+		return 0
 	} else {
 		println("unknown compression method", targetChunk.CompressedMethod)
 		return -fuse.EIO
 	}
+
+	return 0
 }
 
 func (fs *MayakashiFS) Mkdir(path string, mode uint32) int {
