@@ -160,7 +160,7 @@ fn compress_file(input_data: &[u8]) -> Vec<Chunk> {
         })
         .collect();
 
-    _ = lock;
+    drop(lock);
     println!("end");
     return chunks;
 }
