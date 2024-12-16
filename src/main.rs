@@ -14,6 +14,7 @@ struct Cli {
 enum SubCommands {
     Create(cmd::create::Args),
     ShowSum(cmd::showsum::Args),
+    Split(cmd::split::Args),
 }
 
 fn main() {
@@ -21,5 +22,6 @@ fn main() {
     match cli.subcommand {
         SubCommands::Create(args) => cmd::create::main(args),
         SubCommands::ShowSum(args) => cmd::showsum::main(args),
+        SubCommands::Split(args) => cmd::split::main(args),
     }
 }

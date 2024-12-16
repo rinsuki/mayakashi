@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::io::{Read, Write};
 
 use prost::Message;
 
@@ -32,4 +32,15 @@ pub fn parse_index_file(input: &mut impl Read) -> proto::FileIndexFile {
     assert_eq!(raw.len(), raw_len as usize);
 
     return proto::FileIndexFile::decode(&raw[..]).unwrap();
+}
+
+pub fn write_index_file(file: proto::FileIndexFile, output: &mut impl Write) {
+    let index_file_bytes = file.encode_to_vec();
+    let index_file_len = index_file_bytes.len();
+    let index_file_bytes = zstd::encode_all(&index_file_bytes[..], 22).unwrap();
+
+    output.write_all(b"MARI").unwrap();
+    output.write_all(&(index_file_bytes.len() as u32).to_be_bytes()).unwrap();
+    output.write_all(&(index_file_len as u32).to_be_bytes()).unwrap();
+    output.write_all(&index_file_bytes).unwrap();
 }

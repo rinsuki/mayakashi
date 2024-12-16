@@ -3,7 +3,7 @@ use std::{collections::{BTreeMap, HashMap, HashSet, VecDeque}, ffi::OsString, io
 use prost::Message;
 use clap::Parser;
 
-use crate::proto::{self, CompressedMethod};
+use crate::{format::index_file, proto::{self, CompressedMethod}};
 
 use rayon::prelude::*;
 
@@ -371,14 +371,7 @@ pub fn main(args: Args) {
     let index_file = proto::FileIndexFile {
         entries: ees,
     };
-    let index_file_bytes = index_file.encode_to_vec();
-    let index_file_len = index_file_bytes.len();
-    let index_file_bytes = zstd::encode_all(&index_file_bytes[..], 22).unwrap();
-
-    outidxfile.write_all(b"MARI").unwrap();
-    outidxfile.write_all(&(index_file_bytes.len() as u32).to_be_bytes()).unwrap();
-    outidxfile.write_all(&(index_file_len as u32).to_be_bytes()).unwrap();
-    outidxfile.write_all(&index_file_bytes).unwrap();
+    index_file::write_index_file(index_file, &mut outidxfile);
 
     let dec_end = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
     println!("{},{}", enc_end - enc_start, dec_end - dec_start);
